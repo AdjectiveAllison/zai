@@ -40,3 +40,5 @@
     ```zig
     const zai = @import("zai");
     ```
+
+## [Example usage](https://github.com/AdjectiveAllison/zai-example-usage)
