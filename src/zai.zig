@@ -234,8 +234,8 @@ pub const AI = struct {
 
 pub const ChatCompletion = struct {
     gpa: std.mem.Allocator,
-    id: []const u8,
-    content: []const u8,
+    id: []const u8 = undefined,
+    content: []const u8 = undefined,
     pub fn deinit(self: *ChatCompletion) void {
         self.gpa.free(self.id);
         self.gpa.free(self.content);
