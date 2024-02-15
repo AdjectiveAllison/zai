@@ -103,8 +103,8 @@ pub const AI = struct {
     pub fn chat_completion(
         self: *AI,
         payload: CompletionPayload,
-        arena: std.mem.Allocator,
-    ) !ChatCompletion {
+        completion: *Message,
+    ) !void {
         var client = std.http.Client{
             .allocator = self.gpa,
         };
@@ -140,41 +140,46 @@ pub const AI = struct {
             std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
         }
 
-        if (payload.stream) {
-            var partial_response: ChatCompletionStreamPartialReturn = undefined;
-            try self.process_chat_completion_stream(arena, &req, &partial_response);
+        // if (payload.stream) {
+        //     var partial_response: ChatCompletionStreamPartialReturn = undefined;
+        //     try self.process_chat_completion_stream(arena, &req, &partial_response);
 
-            // TODO: Figure out a standard return object option for both stream and non stream.
-            var choices = [_]Choice{Choice{
-                .index = 0,
-                .finish_reason = "stop",
-                .message = Message{
-                    .role = "assistant",
-                    .content = partial_response.content,
-                },
-            }};
-            const chat_completion_empty = ChatCompletion{
-                .id = partial_response.id,
-                .object = "chat.completion",
-                .created = partial_response.created,
-                .model = payload.model,
-                .choices = choices[0..],
-            };
-            return chat_completion_empty;
-        }
+        //     // TODO: Figure out a standard return object option for both stream and non stream.
+        //     var choices = [_]Choice{Choice{
+        //         .index = 0,
+        //         .finish_reason = "stop",
+        //         .message = Message{
+        //             .role = "assistant",
+        //             .content = partial_response.content,
+        //         },
+        //     }};
+        //     _ = ChatCompletion{
+        //         .id = partial_response.id,
+        //         .object = "chat.completion",
+        //         .created = partial_response.created,
+        //         .model = payload.model,
+        //         .choices = choices[0..],
+        //     };
+        //     // const chat_completion_empty =
+        //     // return chat_completion_empty;
+        //     return;
+        // }
 
         const response = req.reader().readAllAlloc(self.gpa, 3276800) catch unreachable;
         //TODO: add in verbosity check to print responses.
         defer self.gpa.free(response);
 
-        const parsed_completion = try std.json.parseFromSliceLeaky(
-            ChatCompletion,
-            arena,
+        const parsed_completion = try std.json.parseFromSlice(
+            ChatCompletionResponse,
+            self.gpa,
             response,
             .{ .ignore_unknown_fields = true },
         );
+        defer parsed_completion.deinit();
 
-        return parsed_completion;
+        completion.content = try self.gpa.dupe(u8, parsed_completion.value.choices[0].message.content);
+
+        return;
     }
     fn process_chat_completion_stream(
         self: *AI,
@@ -227,6 +232,72 @@ pub const AI = struct {
     }
 };
 
+pub const ChatCompletion = struct {
+    gpa: std.mem.Allocator,
+    id: []const u8,
+    content: []const u8,
+    pub fn deinit(self: *ChatCompletion) void {
+        self.gpa.free(self.id);
+        self.gpa.free(self.content);
+    }
+
+    // Can I use ai.gpa here?
+    pub fn request(self: *ChatCompletion, gpa: std.mem.Allocator, ai: *AI, payload: CompletionPayload) !void {
+        self.gpa = gpa;
+
+        var client = std.http.Client{
+            .allocator = self.gpa,
+        };
+        defer client.deinit();
+
+        // TODO: store api endpoints in a structure somehow and generate them at the point of initialization.
+        const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{ai.base_url});
+        defer self.gpa.free(uri_string);
+        const uri = std.Uri.parse(uri_string) catch unreachable;
+
+        const body = try std.json.stringifyAlloc(self.gpa, payload, .{
+            .whitespace = .minified,
+            .emit_null_optional_fields = false,
+        });
+
+        // consider verbose printing the body if debugging.
+        //std.debug.print("BODY:\n{s}\n\n", .{body});
+        defer self.gpa.free(body);
+
+        var req = try client.open(.POST, uri, ai.headers, .{});
+        defer req.deinit();
+
+        req.transfer_encoding = .chunked;
+
+        try req.send(.{});
+        try req.writer().writeAll(body);
+        try req.finish();
+        try req.wait();
+
+        const status = req.response.status;
+        if (status != .ok) {
+            //TODO: Do this better.
+            std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
+        }
+
+        const response = req.reader().readAllAlloc(self.gpa, 3276800) catch unreachable;
+        //TODO: add in verbosity check to print responses.
+        defer self.gpa.free(response);
+
+        const parsed_completion = try std.json.parseFromSlice(
+            ChatCompletionResponse,
+            self.gpa,
+            response,
+            .{ .ignore_unknown_fields = true },
+        );
+        defer parsed_completion.deinit();
+
+        self.content = try self.gpa.dupe(u8, parsed_completion.value.choices[0].message.content);
+        self.id = try self.gpa.dupe(u8, parsed_completion.value.id);
+        return;
+    }
+};
+
 pub const EmbeddingsPayload = struct {
     input: []const u8,
     model: []const u8,
@@ -268,7 +339,7 @@ pub const Message = struct {
 
 const Choice = struct { index: usize, finish_reason: ?[]const u8, message: Message };
 
-pub const ChatCompletion = struct {
+const ChatCompletionResponse = struct {
     id: []const u8,
     object: []const u8,
     created: u64,
