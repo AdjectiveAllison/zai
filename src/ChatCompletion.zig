@@ -1,7 +1,9 @@
 const ChatCompletion = @This();
 const AI = @import("AI.zig");
-
+const StreamHandler = @import("shared.zig").StreamHandler;
 const std = @import("std");
+const ChatCompletionStream = @import("shared.zig").ChatCompletionStream;
+const CompletionPayload = @import("shared.zig").CompletionPayload;
 
 // TODO: Add support for multiple choices being in the response later on.
 // TODO: Add support for function/tool calling.
@@ -23,7 +25,6 @@ pub fn init(
 
 pub fn deinit(self: *ChatCompletion) void {
     self.gpa.free(self.id);
-    // self.gpa.destroy(&self.created);
     self.gpa.free(self.content);
 }
 
@@ -31,20 +32,9 @@ pub fn deinit(self: *ChatCompletion) void {
 pub fn request(
     self: *ChatCompletion,
     ai: *AI,
-    payload: AI.CompletionPayload,
+    payload: CompletionPayload,
 ) !void {
-    // var arena_state = std.heap.ArenaAllocator.init(self.gpa);
-    // defer arena_state.deinit();
-    // const arena = arena_state.allocator();
-
-    // const parsed_completion = try ai.chatCompletionLeaky(arena, payload);
-
-    // self.content = try self.gpa.dupe(u8, parsed_completion.choices[0].message.content);
-    // self.id = try self.gpa.dupe(u8, parsed_completion.id);
-    // self.created = parsed_completion.created;
-
     var parsed_completion = try ai.chatCompletionParsed(payload);
-    std.debug.print("HERE IS THE DATA:\n{any}\n", .{parsed_completion.value});
     defer parsed_completion.deinit();
 
     self.content = try self.gpa.dupe(u8, parsed_completion.value.choices[0].message.content);
@@ -55,7 +45,7 @@ pub fn request(
 pub fn streamRequest(
     self: *ChatCompletion,
     ai: *AI,
-    payload: AI.CompletionPayload,
+    payload: CompletionPayload,
     handler: StreamHandler,
 ) !void {
     _ = self;
@@ -64,23 +54,53 @@ pub fn streamRequest(
     _ = handler;
 }
 
-// TODO: Each provider slightly differs in stream response, would be really good to make this a per-provider type that adapts based on how the AI struct is initialized.
-const ChatCompletionStream = struct {
-    id: []const u8,
-    created: u64,
-    choices: []struct {
-        index: u32,
-        delta: struct {
-            content: ?[]const u8,
-        },
-    },
-};
+// fn process_chat_completion_stream(
+//     self: *AI,
+//     http_request: *std.http.Client.Request,
+//     partial_response: *ChatCompletionStreamPartialReturn,
+// ) !void {
+//     var response_asigned = false;
+//     var content_list = std.ArrayList(u8).init(self.gpa);
+//     // defer content_list.deinit();
 
-const ChatCompletionStreamPartialReturn = struct {
-    id: []const u8,
-    created: u64,
-    content: []const u8,
-};
+//     // TODO: Decide how stream handlers can be passed in.
+//     var debug_handler = DebugHandler{};
+//     const stream_handler = debug_handler.streamHandler();
+
+//     while (true) {
+//         const chunk_reader = try http_request.reader().readUntilDelimiterOrEofAlloc(self.gpa, '\n', 1638400);
+//         if (chunk_reader == null) break;
+
+//         const chunk = chunk_reader.?;
+//         defer self.gpa.free(chunk);
+
+//         if (std.mem.eql(u8, chunk, "data: [DONE]")) break;
+
+//         if (!std.mem.startsWith(u8, chunk, "data: ")) continue;
+
+//         // std.debug.print("Here is the chunk: {any}\n", .{chunk[6..]});
+
+//         const parsed_chunk = try std.json.parseFromSlice(
+//             ChatCompletionStream,
+//             chunk[6..],
+//             .{ .ignore_unknown_fields = true },
+//         );
+
+//         if (!response_asigned) {
+//             partial_response.id = parsed_chunk.id;
+//             partial_response.created = parsed_chunk.created;
+//             response_asigned = true;
+//         }
+
+//         try stream_handler.processChunk(parsed_chunk);
+
+//         if (parsed_chunk.choices[0].delta.content == null) continue;
+
+//         try content_list.appendSlice(parsed_chunk.choices[0].delta.content.?);
+//     }
+
+//     partial_response.content = try content_list.toOwnedSlice();
+// }
 
 pub const DebugHandler = struct {
     fn processChunk(ptr: *anyopaque, completion_stream: ChatCompletionStream) !void {
@@ -94,14 +114,6 @@ pub const DebugHandler = struct {
             .ptr = self,
             .processChunkFn = processChunk,
         };
-    }
-};
-pub const StreamHandler = struct {
-    ptr: *anyopaque,
-    processChunkFn: *const fn (ptr: *anyopaque, completion_stream: ChatCompletionStream) anyerror!void,
-
-    fn processChunk(self: StreamHandler, completion_stream: ChatCompletionStream) !void {
-        return self.processChunkFn(self.ptr, completion_stream);
     }
 };
 // pub const ChatCompletionResponse = struct {

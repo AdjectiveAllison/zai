@@ -8,21 +8,21 @@ pub fn main() !void {
 
     var ai: zai.AI = undefined;
 
-    try ai.init(gpa, zai.AI.Provider.OctoAI);
+    try ai.init(gpa, zai.Provider.OctoAI);
     defer ai.deinit();
 
-    var messages = [_]zai.AI.Message{
-        zai.AI.Message{
+    var messages = [_]zai.Message{
+        zai.Message{
             .role = "system",
             .content = "You are a helpful AI!",
         },
-        zai.AI.Message{
+        zai.Message{
             .role = "user",
             .content = "Write one sentence about how cool it would be to use zig to call language models.",
         },
     };
 
-    const payload = zai.AI.CompletionPayload{
+    const payload = zai.CompletionPayload{
         .model = "mixtral-8x7b-instruct-fp16",
         .messages = messages[0..],
         .temperature = 0.1,
@@ -31,8 +31,9 @@ pub fn main() !void {
 
     var chat_completion: zai.ChatCompletion = undefined;
     chat_completion.init(gpa, false);
-    try chat_completion.request(&ai, payload);
     defer chat_completion.deinit();
+
+    try chat_completion.request(&ai, payload);
 
     std.debug.print("\nFull response: {s}\n", .{chat_completion.content});
     std.debug.print("\nID: {s}\n", .{chat_completion.id});

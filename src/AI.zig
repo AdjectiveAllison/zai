@@ -1,6 +1,9 @@
 const AI = @This();
 
 const std = @import("std");
+const Provider = @import("shared.zig").Provider;
+const Message = @import("shared.zig").Message;
+const CompletionPayload = @import("shared.zig").CompletionPayload;
 
 base_url: []const u8,
 api_key: []const u8,
@@ -34,7 +37,10 @@ pub fn chatCompletionParsed(
         ChatCompletionResponse,
         self.gpa,
         response,
-        .{ .ignore_unknown_fields = true },
+        .{
+            .ignore_unknown_fields = true,
+            .allocate = .alloc_always,
+        },
     );
 
     return parsed_completion;
@@ -70,21 +76,6 @@ pub fn chatCompletionParsed(
     // return;
 }
 
-// This isn't responsible
-pub fn chatCompletionResponsible(self: *AI, payload: CompletionPayload) !ChatCompletionResponse {
-    const response = try self.chatCompletionRaw(payload);
-    defer self.gpa.free(response);
-
-    const parsed_completion = try std.json.parseFromSlice(
-        ChatCompletionResponse,
-        self.gpa,
-        response,
-        .{ .ignore_unknown_fields = true },
-    );
-    defer parsed_completion.deinit();
-
-    return parsed_completion.value;
-}
 // deinit of arena passed in should prevent leaks.
 pub fn chatCompletionLeaky(
     self: *AI,
@@ -98,14 +89,17 @@ pub fn chatCompletionLeaky(
         ChatCompletionResponse,
         arena,
         response,
-        .{ .ignore_unknown_fields = true },
+        .{
+            .ignore_unknown_fields = true,
+            .allocate = .alloc_always,
+        },
     );
 
     return parsed_completion;
 }
 
 // CALLER OWNS THE FREEING RESPOSNSIBILITIES
-fn chatCompletionRaw(
+pub fn chatCompletionRaw(
     self: *AI,
     payload: CompletionPayload,
 ) ![]const u8 {
@@ -148,6 +142,11 @@ fn chatCompletionRaw(
 
     return response;
 }
+
+// pub fn chatCompletionStreamRaw(
+//     self: *AI,
+//     payload: CompletionPayload,
+// )
 //TODO: Headers currently believes api_key is always set, confirm that's okay and remove this todo.
 // I used content-length in completion in my other implementation, do I need that?
 fn setHeaders(self: *AI) !void {
@@ -167,68 +166,23 @@ fn setApiKey(self: *AI, provider: Provider) !void {
     self.api_key = try std.process.getEnvVarOwned(self.gpa, env_var);
 }
 
-// TODO: Move providers into some root level thing so we don't need to to zai.AI.Provider to access.
-// base url options:
-// openAI: https://api.openai.com/v1
-// Together: https://api.together.xyz/v1
-// Octo: https://text.octoai.run/v1
-// TODO: Change to tagged union with individual provider types?
-pub const Provider = enum {
-    OpenAI,
-    TogetherAI,
-    OctoAI,
-
-    pub fn getBaseUrl(self: Provider) []const u8 {
-        return switch (self) {
-            .OpenAI => "https://api.openai.com/v1",
-            .TogetherAI => "https://api.together.xyz/v1",
-            .OctoAI => "https://text.octoai.run/v1",
-        };
-    }
-
-    pub fn getKeyVar(self: Provider) []const u8 {
-        return switch (self) {
-            .OpenAI => "OPENAI_API_KEY",
-            .TogetherAI => "TOGETHER_API_KEY",
-            .OctoAI => "OCTO_API_KEY",
-        };
-    }
-};
-
-pub const CompletionPayload = struct {
-    model: []const u8,
-    max_tokens: ?u64 = null,
-    messages: []Message,
-    temperature: ?f16 = null,
-    top_p: ?f16 = null,
-    // TODO: Check to see if this needs to be an array or something. slice of slice is hard to do in zig.
-    stop: ?[][]const u8 = null,
-    frequency_penalty: ?f16 = null,
-    presence_penalty: ?f16 = null,
-    stream: bool = false,
-};
-
-pub const Message = struct {
-    role: []const u8,
-    content: []const u8,
-};
-
-pub const Role = union(enum) {
+// TODO: Do something with role later on potentially.
+const Role = union(enum) {
     system: "system",
     assistant: "assistant",
     user: "user",
 };
 
-pub const Usage = struct {
+const Usage = struct {
     prompt_tokens: u64,
     completion_tokens: ?u64,
     total_tokens: u64,
 };
 
-pub const Choice = struct { index: usize, finish_reason: ?[]const u8, message: Message };
+const Choice = struct { index: usize, finish_reason: ?[]const u8, message: Message };
 
 // TODO: If I return direct response without explicitly passing in an arena then go ahead and create a deinit method inside of this that cleans it all up.
-pub const ChatCompletionResponse = struct {
+const ChatCompletionResponse = struct {
     id: []const u8,
     object: []const u8,
     created: u64,

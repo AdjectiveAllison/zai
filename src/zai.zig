@@ -1,6 +1,10 @@
 const std = @import("std");
 pub const AI = @import("AI.zig");
 pub const ChatCompletion = @import("ChatCompletion.zig");
+pub const StreamHandler = @import("shared.zig").StreamHandler;
+pub const Provider = @import("shared.zig").Provider;
+pub const Message = @import("shared.zig").Message;
+pub const CompletionPayload = @import("shared.zig").CompletionPayload;
 
 // std.meta.stringToEnum could be very useful for model strings -> enum conversion. null is returned if enum isn't found, thus we could early-exit out of clients if they pass in an incorrect one.
 
@@ -61,56 +65,6 @@ pub const ChatCompletion = @import("ChatCompletion.zig");
 //         );
 
 //         return parsed_embeddings;
-//     }
-
-//     fn process_chat_completion_stream(
-//         self: *AI,
-//         arena: std.mem.Allocator,
-//         http_request: *std.http.Client.Request,
-//         partial_response: *ChatCompletionStreamPartialReturn,
-//     ) !void {
-//         var response_asigned = false;
-//         var content_list = std.ArrayList(u8).init(arena);
-//         // defer content_list.deinit();
-
-//         // TODO: Decide how stream handlers can be passed in.
-//         var debug_handler = DebugHandler{};
-//         const stream_handler = debug_handler.streamHandler();
-
-//         while (true) {
-//             const chunk_reader = try http_request.reader().readUntilDelimiterOrEofAlloc(self.gpa, '\n', 1638400);
-//             if (chunk_reader == null) break;
-
-//             const chunk = chunk_reader.?;
-//             defer self.gpa.free(chunk);
-
-//             if (std.mem.eql(u8, chunk, "data: [DONE]")) break;
-
-//             if (!std.mem.startsWith(u8, chunk, "data: ")) continue;
-
-//             // std.debug.print("Here is the chunk: {any}\n", .{chunk[6..]});
-
-//             const parsed_chunk = try std.json.parseFromSliceLeaky(
-//                 ChatCompletionStream,
-//                 arena,
-//                 chunk[6..],
-//                 .{ .ignore_unknown_fields = true },
-//             );
-
-//             if (!response_asigned) {
-//                 partial_response.id = parsed_chunk.id;
-//                 partial_response.created = parsed_chunk.created;
-//                 response_asigned = true;
-//             }
-
-//             try stream_handler.processChunk(parsed_chunk);
-
-//             if (parsed_chunk.choices[0].delta.content == null) continue;
-
-//             try content_list.appendSlice(parsed_chunk.choices[0].delta.content.?);
-//         }
-
-//         partial_response.content = try content_list.toOwnedSlice();
 //     }
 // };
 
