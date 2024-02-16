@@ -4,6 +4,7 @@ const std = @import("std");
 const Provider = @import("shared.zig").Provider;
 const Message = @import("shared.zig").Message;
 const CompletionPayload = @import("shared.zig").CompletionPayload;
+const StreamHandler = @import("shared.zig").StreamHandler;
 
 base_url: []const u8,
 api_key: []const u8,
@@ -143,10 +144,77 @@ pub fn chatCompletionRaw(
     return response;
 }
 
-// pub fn chatCompletionStreamRaw(
-//     self: *AI,
-//     payload: CompletionPayload,
-// )
+pub fn chatCompletionStreamRaw(
+    self: *AI,
+    payload: CompletionPayload,
+    handler: StreamHandler,
+) !void {
+    var client = std.http.Client{
+        .allocator = self.gpa,
+    };
+    defer client.deinit();
+
+    const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
+    defer self.gpa.free(uri_string);
+    const uri = std.Uri.parse(uri_string) catch unreachable;
+
+    const body = try std.json.stringifyAlloc(self.gpa, payload, .{
+        .whitespace = .minified,
+        .emit_null_optional_fields = false,
+    });
+
+    defer self.gpa.free(body);
+
+    var req = try client.open(.POST, uri, self.headers, .{});
+    defer req.deinit();
+
+    req.transfer_encoding = .chunked;
+
+    try req.send(.{});
+    try req.writer().writeAll(body);
+    try req.finish();
+    try req.wait();
+
+    const status = req.response.status;
+    if (status != .ok) {
+        //TODO: Do this better.
+        std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
+    }
+
+    while (true) {
+        const chunk = try req.reader().readUntilDelimiterOrEofAlloc(self.gpa, '\n', 1638400) orelse break;
+
+        defer self.gpa.free(chunk);
+
+        if (std.mem.eql(u8, chunk, "data: [DONE]")) break;
+
+        if (!std.mem.startsWith(u8, chunk, "data: ")) continue;
+
+        try handler.processChunk(self.gpa, chunk[6..]);
+        // std.debug.print("Here is the chunk: {any}\n", .{chunk[6..]});
+
+        // const parsed_chunk = try std.json.parseFromSlice(
+        //     ChatCompletionStream,
+        //     chunk[6..],
+        //     .{ .ignore_unknown_fields = true },
+        // );
+
+        // if (!response_asigned) {
+        //     partial_response.id = parsed_chunk.id;
+        //     partial_response.created = parsed_chunk.created;
+        //     response_asigned = true;
+        // }
+
+        // try stream_handler.processChunk(parsed_chunk);
+
+        // if (parsed_chunk.choices[0].delta.content == null) continue;
+
+        // try content_list.appendSlice(parsed_chunk.choices[0].delta.content.?);
+    }
+
+    try handler.streamFinished();
+}
+
 //TODO: Headers currently believes api_key is always set, confirm that's okay and remove this todo.
 // I used content-length in completion in my other implementation, do I need that?
 fn setHeaders(self: *AI) !void {

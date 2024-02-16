@@ -46,12 +46,15 @@ pub fn streamRequest(
     self: *ChatCompletion,
     ai: *AI,
     payload: CompletionPayload,
-    handler: StreamHandler,
+    // handler: StreamHandler,
 ) !void {
-    _ = self;
-    _ = ai;
-    _ = payload;
-    _ = handler;
+    var debug_handler = DebugHandler{};
+    const stream_handler = debug_handler.streamHandler();
+
+    try ai.chatCompletionStreamRaw(payload, stream_handler);
+
+    self.content = try std.fmt.allocPrint(self.gpa, "Hello!", .{});
+    self.id = try std.fmt.allocPrint(self.gpa, "1245125", .{});
 }
 
 // fn process_chat_completion_stream(
@@ -103,16 +106,33 @@ pub fn streamRequest(
 // }
 
 pub const DebugHandler = struct {
-    fn processChunk(ptr: *anyopaque, completion_stream: ChatCompletionStream) !void {
+    fn processChunk(ptr: *anyopaque, gpa: std.mem.Allocator, chunk: []const u8) !void {
         const self: *DebugHandler = @ptrCast(@alignCast(ptr));
         _ = self;
-        if (completion_stream.choices[0].delta.content == null) return;
-        std.debug.print("{s}", .{completion_stream.choices[0].delta.content.?});
+
+        const parsed_chunk = try std.json.parseFromSlice(
+            ChatCompletionStream,
+            gpa,
+            chunk,
+            .{
+                .ignore_unknown_fields = true,
+                .allocate = .alloc_always,
+            },
+        );
+        defer parsed_chunk.deinit();
+        const content = parsed_chunk.value.choices[0].delta.content orelse return;
+        std.debug.print("{s}", .{content});
+    }
+    fn streamFinished(ptr: *anyopaque) !void {
+        const self: *DebugHandler = @ptrCast(@alignCast(ptr));
+        _ = self;
+        std.debug.print("\n\n------We did it!------\n\n", .{});
     }
     pub fn streamHandler(self: *DebugHandler) StreamHandler {
         return .{
             .ptr = self,
             .processChunkFn = processChunk,
+            .streamFinishedFn = streamFinished,
         };
     }
 };

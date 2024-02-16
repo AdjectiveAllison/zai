@@ -1,11 +1,20 @@
 const std = @import("std");
 
+// pub fn StreamHandler(comptime Handler: type) type {
+//     return struct {
+//         const Self = @This();
+//     }
+// }
 pub const StreamHandler = struct {
     ptr: *anyopaque,
-    processChunkFn: *const fn (ptr: *anyopaque, completion_stream: ChatCompletionStream) anyerror!void,
+    processChunkFn: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator, chunk: []const u8) anyerror!void,
+    streamFinishedFn: *const fn (ptr: *anyopaque) anyerror!void,
 
-    fn processChunk(self: StreamHandler, completion_stream: ChatCompletionStream) !void {
-        return self.processChunkFn(self.ptr, completion_stream);
+    pub fn processChunk(self: StreamHandler, allocator: std.mem.Allocator, chunk: []const u8) !void {
+        return self.processChunkFn(self.ptr, allocator, chunk);
+    }
+    pub fn streamFinished(self: StreamHandler) !void {
+        return self.streamFinishedFn(self.ptr);
     }
 };
 

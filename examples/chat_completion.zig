@@ -26,14 +26,14 @@ pub fn main() !void {
         .model = "mixtral-8x7b-instruct-fp16",
         .messages = messages[0..],
         .temperature = 0.1,
-        .stream = false,
+        .stream = true,
     };
 
     var chat_completion: zai.ChatCompletion = undefined;
     chat_completion.init(gpa, false);
     defer chat_completion.deinit();
 
-    try chat_completion.request(&ai, payload);
+    try chat_completion.streamRequest(&ai, payload);
 
     std.debug.print("\nFull response: {s}\n", .{chat_completion.content});
     std.debug.print("\nID: {s}\n", .{chat_completion.id});
