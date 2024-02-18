@@ -190,26 +190,7 @@ pub fn chatCompletionStreamRaw(
 
         if (!std.mem.startsWith(u8, chunk, "data: ")) continue;
 
-        try handler.processChunk(self.gpa, chunk[6..]);
-        // std.debug.print("Here is the chunk: {any}\n", .{chunk[6..]});
-
-        // const parsed_chunk = try std.json.parseFromSlice(
-        //     ChatCompletionStream,
-        //     chunk[6..],
-        //     .{ .ignore_unknown_fields = true },
-        // );
-
-        // if (!response_asigned) {
-        //     partial_response.id = parsed_chunk.id;
-        //     partial_response.created = parsed_chunk.created;
-        //     response_asigned = true;
-        // }
-
-        // try stream_handler.processChunk(parsed_chunk);
-
-        // if (parsed_chunk.choices[0].delta.content == null) continue;
-
-        // try content_list.appendSlice(parsed_chunk.choices[0].delta.content.?);
+        try handler.processChunk(chunk[6..]);
     }
 
     try handler.streamFinished();

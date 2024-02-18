@@ -30,10 +30,10 @@ pub fn main() !void {
     };
 
     var chat_completion: zai.ChatCompletion = undefined;
-    chat_completion.init(gpa, false);
+    chat_completion.init(gpa);
     defer chat_completion.deinit();
 
-    try chat_completion.streamRequest(&ai, payload);
+    try chat_completion.request(&ai, payload);
 
     std.debug.print("\nFull response: {s}\n", .{chat_completion.content});
     std.debug.print("\nID: {s}\n", .{chat_completion.id});

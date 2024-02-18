@@ -1,5 +1,6 @@
 const std = @import("std");
 
+// TODO: Consider reworking StreamHandler into something like below for more composibility.
 // pub fn StreamHandler(comptime Handler: type) type {
 //     return struct {
 //         const Self = @This();
@@ -7,11 +8,15 @@ const std = @import("std");
 // }
 pub const StreamHandler = struct {
     ptr: *anyopaque,
-    processChunkFn: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator, chunk: []const u8) anyerror!void,
+    gpa: std.mem.Allocator,
+    id: []const u8,
+    created: u64,
+    content: []const u8,
+    processChunkFn: *const fn (ptr: *anyopaque, chunk: []const u8) anyerror!void,
     streamFinishedFn: *const fn (ptr: *anyopaque) anyerror!void,
 
-    pub fn processChunk(self: StreamHandler, allocator: std.mem.Allocator, chunk: []const u8) !void {
-        return self.processChunkFn(self.ptr, allocator, chunk);
+    pub fn processChunk(self: StreamHandler, chunk: []const u8) !void {
+        return self.processChunkFn(self.ptr, chunk);
     }
     pub fn streamFinished(self: StreamHandler) !void {
         return self.streamFinishedFn(self.ptr);
