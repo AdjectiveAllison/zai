@@ -45,36 +45,6 @@ pub fn chatCompletionParsed(
     );
 
     return parsed_completion;
-    // if (payload.stream) {
-    //     var partial_response: ChatCompletionStreamPartialReturn = undefined;
-    //     try self.process_chat_completion_stream(arena, &req, &partial_response);
-
-    //     // TODO: Figure out a standard return object option for both stream and non stream.
-    //     var choices = [_]Choice{Choice{
-    //         .index = 0,
-    //         .finish_reason = "stop",
-    //         .message = Message{
-    //             .role = "assistant",
-    //             .content = partial_response.content,
-    //         },
-    //     }};
-    //     _ = ChatCompletion{
-    //         .id = partial_response.id,
-    //         .object = "chat.completion",
-    //         .created = partial_response.created,
-    //         .model = payload.model,
-    //         .choices = choices[0..],
-    //     };
-    //     // const chat_completion_empty =
-    //     // return chat_completion_empty;
-    //     return;
-    // }
-
-    // defer parsed_completion.deinit();
-
-    // completion.content = try self.gpa.dupe(u8, parsed_completion.value.choices[0].message.content);
-
-    // return;
 }
 
 // deinit of arena passed in should prevent leaks.

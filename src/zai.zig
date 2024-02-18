@@ -12,8 +12,7 @@ pub const CompletionPayload = @import("shared.zig").CompletionPayload;
 // If ogranization is passed, it's simply a header to openAI:
 //"OpenAI-Organization: YOUR_ORG_ID"
 
-// TODO: create AI struct object that can take the below as parameters and handle each different provider for both chat completion and embeddings.
-// was using zig-llm and bork/src/Network.zig for inspiration on the initilaization of this struct.
+// TODO: Move this leftover embeddings stuff
 // pub const AI = struct {
 //     pub fn embeddings(
 //         self: *AI,
@@ -65,78 +64,6 @@ pub const CompletionPayload = @import("shared.zig").CompletionPayload;
 //         );
 
 //         return parsed_embeddings;
-//     }
-// };
-
-// pub const ChatCompletion = struct {
-//     gpa: std.mem.Allocator,
-//     id: []const u8 = undefined,
-//     content: []const u8 = undefined,
-//     pub fn init(
-//         self: *ChatCompletion,
-//         gpa: std.mem.Allocator,
-//         stream: bool,
-//     ) void {
-//         self.gpa = gpa;
-//         _ = stream;
-//     }
-//     pub fn deinit(self: *ChatCompletion) void {
-//         self.gpa.free(self.id);
-//         self.gpa.free(self.content);
-//     }
-
-//     // Can I use ai.gpa here?
-//     pub fn request(self: *ChatCompletion, ai: *AI, payload: AI.CompletionPayload) !void {
-//         var client = std.http.Client{
-//             .allocator = self.gpa,
-//         };
-//         defer client.deinit();
-
-//         // TODO: store api endpoints in a structure somehow and generate them at the point of initialization.
-//         const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{ai.base_url});
-//         defer self.gpa.free(uri_string);
-//         const uri = std.Uri.parse(uri_string) catch unreachable;
-
-//         const body = try std.json.stringifyAlloc(self.gpa, payload, .{
-//             .whitespace = .minified,
-//             .emit_null_optional_fields = false,
-//         });
-
-//         // consider verbose printing the body if debugging.
-//         //std.debug.print("BODY:\n{s}\n\n", .{body});
-//         defer self.gpa.free(body);
-
-//         var req = try client.open(.POST, uri, ai.headers, .{});
-//         defer req.deinit();
-
-//         req.transfer_encoding = .chunked;
-
-//         try req.send(.{});
-//         try req.writer().writeAll(body);
-//         try req.finish();
-//         try req.wait();
-
-//         const status = req.response.status;
-//         if (status != .ok) {
-//             //TODO: Do this better.
-//             std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
-//         }
-
-//         const response = req.reader().readAllAlloc(self.gpa, 3276800) catch unreachable;
-//         //TODO: add in verbosity check to print responses.
-//         defer self.gpa.free(response);
-
-//         const parsed_completion = try std.json.parseFromSlice(
-//             AI.ChatCompletionResponse,
-//             self.gpa,
-//             response,
-//             .{ .ignore_unknown_fields = true },
-//         );
-//         defer parsed_completion.deinit();
-
-//         self.content = try self.gpa.dupe(u8, parsed_completion.value.choices[0].message.content);
-//         self.id = try self.gpa.dupe(u8, parsed_completion.value.id);
-//         return;
 //     }
 // };
 
