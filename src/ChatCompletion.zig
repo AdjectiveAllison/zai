@@ -21,7 +21,7 @@ pub fn deinit(self: *ChatCompletion) void {
     self.gpa.free(self.content);
 }
 
-// Can I use ai.gpa here?
+// TODO: Make it so that we can handle the stream in different ways other than just debug printing like is done currently.
 pub fn request(
     self: *ChatCompletion,
     ai: *AI,
