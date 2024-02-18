@@ -41,4 +41,6 @@
     const zai = @import("zai");
     ```
 
-## [Example usage](https://github.com/AdjectiveAllison/zai-example-usage)
+## Examples located in [examples directory](examples/)
+
+1. [Chat Completion](examples/chat_completion.zig)
