@@ -1,0 +1,21 @@
+.{
+    .name = "zai-cli",
+    .version = "0.0.0",
+
+    .dependencies = .{
+        .cova = .{
+            .url = "https://github.com/00JCIV00/cova/archive/19dcf0655af8dff4d55a9012a557984ffbe9f674.tar.gz",
+            .hash = "1220a8b06d4d91ff6e260794fc2a8f729f8c8713c3006611926f3e5dad915e97b36d",
+        },
+        .zai = .{
+            .url = "git+https://github.com/AdjectiveAllison/zai.git#e6200701e80165239960c2f73dd3333ed3ac9e4f",
+            .hash = "12208cc3502115d8ab45590ca4264eeaba8df3a97d3c6cb2fb1218880e7841ca8a97",
+        },
+    },
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
