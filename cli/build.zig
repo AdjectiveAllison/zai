@@ -8,9 +8,6 @@ pub fn build(b: *std.Build) void {
 
     const opts = .{ .target = target, .optimize = optimize };
 
-    // Cova
-    const cova_mod = b.dependency("cova", opts).module("cova");
-
     // Zai library
     const zai_mod = b.dependency("zai", opts).module("zai");
 
@@ -21,7 +18,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    exe.root_module.addImport("cova", cova_mod);
     exe.root_module.addImport("zai", zai_mod);
 
     b.installArtifact(exe);
