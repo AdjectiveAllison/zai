@@ -7,7 +7,7 @@ pub fn run(gpa: std.mem.Allocator, args: []const []const u8) !void {
     if (cmd.mode == .stdin) @panic("stdin mode for chat messages not supported yet!");
 
     var ai: zai.AI = undefined;
-    try ai.init(gpa, zai.Provider.OctoAI);
+    try ai.init(gpa, cmd.provider);
     defer ai.deinit();
 
     var messages = [_]zai.Message{
@@ -22,7 +22,7 @@ pub fn run(gpa: std.mem.Allocator, args: []const []const u8) !void {
     };
 
     const payload = zai.CompletionPayload{
-        .model = "mixtral-8x7b-instruct-fp16",
+        .model = cmd.model,
         .messages = messages[0..],
         .temperature = 0.1,
         .stream = cmd.stream,
@@ -43,6 +43,8 @@ pub fn run(gpa: std.mem.Allocator, args: []const []const u8) !void {
 pub const Command = struct {
     message: ?[]const u8 = null,
     stream: bool = false,
+    provider: zai.Provider = zai.Provider.OctoAI,
+    model: []const u8 = "mixtral-8x7b-instruct-fp16",
     mode: enum { stdin, command_line } = .command_line,
 
     fn parse(args: []const []const u8) Command {
@@ -67,6 +69,19 @@ pub const Command = struct {
                 std.mem.eql(u8, arg, "-"))
             {
                 cmd.mode = .stdin;
+                continue;
+            }
+            if (std.mem.eql(u8, arg, "--model")) {
+                cmd.model = args[idx + 1];
+                idx += 1;
+                continue;
+            }
+            if (std.mem.eql(u8, arg, "--provider")) {
+                cmd.provider = std.meta.stringToEnum(zai.Provider, args[idx + 1]) orelse {
+                    std.debug.print("Unrecognized provider given: {s}\n please see \"zai.Provider\" for available options.", .{args[idx + 1]});
+                    fatalHelp();
+                };
+                idx += 1;
                 continue;
             }
             if (idx != (args.len - 1)) {
