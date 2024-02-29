@@ -7,23 +7,21 @@ const CompletionPayload = @import("shared.zig").CompletionPayload;
 const StreamHandler = @import("shared.zig").StreamHandler;
 
 base_url: []const u8,
-api_key: []const u8,
+authorization_header_value: []const u8,
 organization: ?[]const u8 = null,
 gpa: std.mem.Allocator,
-headers: std.http.Headers,
+headers: []const std.http.Header,
 
 //api_key: []const u8, organization_id: ?[]const u8\
 pub fn init(self: *AI, gpa: std.mem.Allocator, provider: Provider) !void {
     self.gpa = gpa;
     self.base_url = provider.getBaseUrl();
 
-    try self.setApiKey(provider);
-    try self.setHeaders();
+    try self.setHeaders(provider);
 }
 
 pub fn deinit(self: *AI) void {
-    self.headers.deinit();
-    self.gpa.free(self.api_key);
+    self.gpa.free(self.authorization_header_value);
 }
 
 // returns owned object with an arena packaged with it to deinit on response.
@@ -79,6 +77,8 @@ pub fn chatCompletionRaw(
     };
     defer client.deinit();
 
+    var response_header_buffer: [2048]u8 = undefined;
+
     // TODO: store api endpoints in a structure somehow and generate them at the point of initialization.
     const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
     defer self.gpa.free(uri_string);
@@ -93,7 +93,11 @@ pub fn chatCompletionRaw(
     //std.debug.print("BODY:\n{s}\n\n", .{body});
     defer self.gpa.free(body);
 
-    var req = try client.open(.POST, uri, self.headers, .{});
+    var req = try client.open(
+        .POST,
+        uri,
+        .{ .server_header_buffer = &response_header_buffer, .extra_headers = self.headers },
+    );
     defer req.deinit();
 
     req.transfer_encoding = .chunked;
@@ -124,6 +128,8 @@ pub fn chatCompletionStreamRaw(
     };
     defer client.deinit();
 
+    var response_header_buffer: [2048]u8 = undefined;
+
     const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
     defer self.gpa.free(uri_string);
     const uri = std.Uri.parse(uri_string) catch unreachable;
@@ -135,7 +141,11 @@ pub fn chatCompletionStreamRaw(
 
     defer self.gpa.free(body);
 
-    var req = try client.open(.POST, uri, self.headers, .{});
+    var req = try client.open(
+        .POST,
+        uri,
+        .{ .server_header_buffer = &response_header_buffer, .extra_headers = self.headers },
+    );
     defer req.deinit();
 
     req.transfer_encoding = .chunked;
@@ -166,23 +176,22 @@ pub fn chatCompletionStreamRaw(
     try handler.streamFinished();
 }
 
-//TODO: Headers currently believes api_key is always set, confirm that's okay and remove this todo.
 // I used content-length in completion in my other implementation, do I need that?
-fn setHeaders(self: *AI) !void {
-    self.headers = std.http.Headers{ .allocator = self.gpa };
-    const authorization_header = std.fmt.allocPrint(self.gpa, "Bearer {s}", .{self.api_key}) catch unreachable;
-    defer self.gpa.free(authorization_header);
-
-    self.headers.append("Content-Type", "application/json") catch unreachable;
-    self.headers.append("Authorization", authorization_header) catch unreachable;
-    self.headers.append("accept", "*/*") catch unreachable;
-}
-
-fn setApiKey(self: *AI, provider: Provider) !void {
+fn setHeaders(self: *AI, provider: Provider) !void {
     const env_var = provider.getKeyVar();
 
     // this should bubble up an error if the Enviornment variable doesn't exist.
-    self.api_key = try std.process.getEnvVarOwned(self.gpa, env_var);
+    const api_key = try std.process.getEnvVarOwned(self.gpa, env_var);
+    defer self.gpa.free(api_key);
+
+    self.authorization_header_value = std.fmt.allocPrint(self.gpa, "Bearer {s}", .{api_key}) catch unreachable;
+
+    var headers = [_]std.http.Header{
+        std.http.Header{ .name = "Content-Type", .value = "application/json" },
+        std.http.Header{ .name = "Authorization", .value = self.authorization_header_value },
+        std.http.Header{ .name = "accept", .value = "*/*" },
+    };
+    self.headers = headers[0..];
 }
 
 // TODO: Do something with role later on potentially.
