@@ -42,7 +42,7 @@ pub fn request(
 
 // STREAM HANDLING GOING ON BELOW.
 fn processChunk(self: *ChatCompletion, chunk: []const u8) ParseError!usize {
-    // const self: *ChatCompletion = @ptrCast(@alignCast(ptr));
+    // std.debug.print("Processing chunk: {s}\n", .{chunk});
 
     const parsed_chunk = try std.json.parseFromSlice(
         ChatCompletionStream,
@@ -54,22 +54,33 @@ fn processChunk(self: *ChatCompletion, chunk: []const u8) ParseError!usize {
         },
     );
     defer parsed_chunk.deinit();
-    const content = parsed_chunk.value.choices[0].delta.content orelse return 0;
-    std.debug.print("{s}", .{content});
+
+    // std.debug.print("Chunk parsed successfully\n", .{});
+
+    const content = parsed_chunk.value.choices[0].delta.content orelse {
+        // std.debug.print("No content in this chunk, skipping\n", .{});
+        return 0;
+    };
+
+    // std.debug.print("Content: {s}\n", .{content});
 
     var content_list: std.ArrayList(u8) = undefined;
 
     if (self.content.len == 0) {
+        // std.debug.print("Initializing content list\n", .{});
         content_list = try std.ArrayList(u8).initCapacity(self.gpa, content.len);
         self.id = try self.gpa.dupe(u8, parsed_chunk.value.id);
         self.created = parsed_chunk.value.created;
     } else {
+        // std.debug.print("Appending to existing content\n", .{});
         content_list = std.ArrayList(u8).fromOwnedSlice(self.gpa, self.content);
     }
     try content_list.appendSlice(content);
     self.content = try content_list.toOwnedSlice();
+    // std.debug.print("Chunk processed, content length: {d}\n", .{self.content.len});
     return content.len;
 }
+
 // fn streamFinished(ptr: *anyopaque) !void {
 //     const self: *ChatCompletion = @ptrCast(@alignCast(ptr));
 //     _ = self;

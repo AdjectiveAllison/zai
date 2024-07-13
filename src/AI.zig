@@ -131,15 +131,21 @@ pub fn chatCompletionStreamRaw(
     payload: CompletionPayload,
     writer: anytype,
 ) !void {
+    // std.debug.print("Starting chatCompletionStreamRaw\n", .{});
     var client = std.http.Client{
         .allocator = self.gpa,
     };
     defer client.deinit();
+
+    // std.debug.print("Client initialized\n", .{});
+
     var response_header_buffer: [2048]u8 = undefined;
 
     const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
     defer self.gpa.free(uri_string);
     const uri = std.Uri.parse(uri_string) catch unreachable;
+
+    // std.debug.print("URI parsed: {s}\n", .{uri_string});
 
     const body = try std.json.stringifyAlloc(self.gpa, payload, .{
         .whitespace = .minified,
@@ -147,6 +153,7 @@ pub fn chatCompletionStreamRaw(
     });
 
     defer self.gpa.free(body);
+    // std.debug.print("Request body: {s}\n", .{body});
 
     var req = try client.open(
         .POST,
@@ -155,32 +162,50 @@ pub fn chatCompletionStreamRaw(
     );
     defer req.deinit();
 
+    // std.debug.print("Request opened\n", .{});
+
     req.transfer_encoding = .chunked;
 
     try req.send();
     try req.writer().writeAll(body);
     try req.finish();
+    // std.debug.print("Request sent and finished\n", .{});
+
     try req.wait();
+    // std.debug.print("Request wait completed\n", .{});
 
     const status = req.response.status;
+    // std.debug.print("Response status: {}\n", .{status});
     if (status != .ok) {
-        //TODO: Do this better.
         std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
     }
 
+    // std.debug.print("Starting to read chunks\n", .{});
+    var content_received = false;
     while (true) {
         const chunk = try req.reader().readUntilDelimiterOrEofAlloc(self.gpa, '\n', 1638400) orelse break;
-
         defer self.gpa.free(chunk);
 
-        if (std.mem.eql(u8, chunk, "data: [DONE]")) break;
+        // std.debug.print("Received chunk: {s}\n", .{chunk});
+
+        if (std.mem.eql(u8, chunk, "data: [DONE]")) {
+            // std.debug.print("Received DONE signal\n", .{});
+            break;
+        }
 
         if (!std.mem.startsWith(u8, chunk, "data: ")) continue;
 
-        try writer.writeAll(chunk[6..]); // Use writeAll and handle potential errors
+        const write_result = try writer.write(chunk[6..]);
+        if (write_result > 0) {
+            content_received = true;
+        }
+
+        if (content_received) {
+            // std.debug.print("Content received and processed\n", .{});
+        }
     }
 
-    // try handler.streamFinished();
+    // std.debug.print("Finished reading chunks\n", .{});
 }
 
 // I used content-length in completion in my other implementation, do I need that?

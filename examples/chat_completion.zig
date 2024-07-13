@@ -24,18 +24,16 @@ pub fn main() !void {
     };
 
     const payload = zai.CompletionPayload{
-        .model = "mixtral-8x7b-instruct-fp16",
+        .model = "meta-llama-3-70b-instruct",
         .messages = messages[0..],
         .temperature = 0.1,
         .stream = true,
+        .max_tokens = null,
     };
-
-    std.debug.print("Here is what the payload looks like: {any}\n", .{payload});
 
     var chat_completion: zai.ChatCompletion = undefined;
     chat_completion.init(gpa);
     defer chat_completion.deinit();
-    std.debug.print("Do we get here?\n", .{});
 
     try chat_completion.request(&ai, payload);
 
