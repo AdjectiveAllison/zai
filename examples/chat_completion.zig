@@ -30,9 +30,12 @@ pub fn main() !void {
         .stream = true,
     };
 
+    std.debug.print("Here is what the payload looks like: {any}\n", .{payload});
+
     var chat_completion: zai.ChatCompletion = undefined;
     chat_completion.init(gpa);
     defer chat_completion.deinit();
+    std.debug.print("Do we get here?\n", .{});
 
     try chat_completion.request(&ai, payload);
 

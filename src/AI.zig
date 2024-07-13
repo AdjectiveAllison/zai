@@ -102,7 +102,7 @@ pub fn chatCompletionRaw(
 
     req.transfer_encoding = .chunked;
 
-    try req.send(.{});
+    try req.send();
     try req.writer().writeAll(body);
     try req.finish();
     try req.wait();
@@ -135,7 +135,6 @@ pub fn chatCompletionStreamRaw(
         .allocator = self.gpa,
     };
     defer client.deinit();
-
     var response_header_buffer: [2048]u8 = undefined;
 
     const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
@@ -158,7 +157,7 @@ pub fn chatCompletionStreamRaw(
 
     req.transfer_encoding = .chunked;
 
-    try req.send(.{});
+    try req.send();
     try req.writer().writeAll(body);
     try req.finish();
     try req.wait();
@@ -178,8 +177,7 @@ pub fn chatCompletionStreamRaw(
 
         if (!std.mem.startsWith(u8, chunk, "data: ")) continue;
 
-        writer.write(chunk[6..]);
-        // try handler.processChunk(chunk[6..]);
+        try writer.writeAll(chunk[6..]); // Use writeAll and handle potential errors
     }
 
     // try handler.streamFinished();

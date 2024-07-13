@@ -4,7 +4,7 @@ const StreamHandler = @import("shared.zig").StreamHandler;
 const std = @import("std");
 const ChatCompletionStream = @import("shared.zig").ChatCompletionStream;
 const CompletionPayload = @import("shared.zig").CompletionPayload;
-
+const ParseError = std.json.ParseError(std.json.Scanner);
 // TODO: Add support for multiple choices being in the response later on.
 // TODO: Add support for function/tool calling.
 gpa: std.mem.Allocator,
@@ -41,7 +41,7 @@ pub fn request(
 }
 
 // STREAM HANDLING GOING ON BELOW.
-fn processChunk(self: *ChatCompletion, chunk: []const u8) error{OutOfMemory}!usize {
+fn processChunk(self: *ChatCompletion, chunk: []const u8) ParseError!usize {
     // const self: *ChatCompletion = @ptrCast(@alignCast(ptr));
 
     const parsed_chunk = try std.json.parseFromSlice(
@@ -76,7 +76,7 @@ fn processChunk(self: *ChatCompletion, chunk: []const u8) error{OutOfMemory}!usi
 //     // std.debug.print("\n\n------We did it!------\n\n", .{});
 // }
 
-pub const Writer = std.io.GenericWriter(*ChatCompletion, error{OutOfMemory}, processChunk);
+pub const Writer = std.io.GenericWriter(*ChatCompletion, ParseError, processChunk);
 
 pub fn writer(self: *ChatCompletion) Writer {
     return .{ .context = self };

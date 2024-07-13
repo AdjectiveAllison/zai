@@ -9,7 +9,7 @@ pub fn build(b: *std.Build) void {
 
     //library module
     const zai_mod = b.addModule(package_name, .{
-        .root_source_file = .{ .path = package_path },
+        .root_source_file = b.path(package_path),
         .target = target,
         .optimize = optimize,
     });
@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
     //example section
     const chat_completion = b.addExecutable(.{
         .name = "chat_completion",
-        .root_source_file = .{ .path = "examples/chat_completion.zig" },
+        .root_source_file = b.path("examples/chat_completion.zig"),
         .target = target,
         .optimize = optimize,
     });
