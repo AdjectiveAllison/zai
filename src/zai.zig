@@ -5,7 +5,7 @@ pub const StreamHandler = @import("shared.zig").StreamHandler;
 pub const Provider = @import("shared.zig").Provider;
 pub const Message = @import("shared.zig").Message;
 pub const CompletionPayload = @import("shared.zig").CompletionPayload;
-
+pub const ChatCompletionModel = @import("providers/OctoAI.zig").ChatCompletionModel;
 // std.meta.stringToEnum could be very useful for model strings -> enum conversion. null is returned if enum isn't found, thus we could early-exit out of clients if they pass in an incorrect one.
 
 //TODO: Handle organization in relevant cases(OpenAI)

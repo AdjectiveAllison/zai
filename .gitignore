@@ -1,2 +1,7 @@
 zig-cache/
 zig-out/
+<<<<<<< Updated upstream
+.zic-cache/
+=======
+.zig-cache/
+>>>>>>> Stashed changes

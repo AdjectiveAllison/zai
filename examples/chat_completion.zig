@@ -2,6 +2,7 @@ const std = @import("std");
 const zai = @import("zai");
 
 pub fn main() !void {
+    std.debug.print("Tag name: {s}\n", .{@tagName(zai.ChatCompletionModel.codellama_70b_instruct_fp16)});
     var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa_state.deinit() == .ok);
     const gpa = gpa_state.allocator();

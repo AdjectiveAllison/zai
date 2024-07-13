@@ -28,7 +28,7 @@ pub fn request(
     payload: CompletionPayload,
 ) !void {
     if (payload.stream) {
-        try ai.chatCompletionStreamRaw(payload, self.streamHandler());
+        try ai.chatCompletionStreamRaw(payload, self.writer());
         return;
     }
 
@@ -41,8 +41,8 @@ pub fn request(
 }
 
 // STREAM HANDLING GOING ON BELOW.
-fn processChunk(ptr: *anyopaque, chunk: []const u8) !void {
-    const self: *ChatCompletion = @ptrCast(@alignCast(ptr));
+fn processChunk(self: *ChatCompletion, chunk: []const u8) error{OutOfMemory}!usize {
+    // const self: *ChatCompletion = @ptrCast(@alignCast(ptr));
 
     const parsed_chunk = try std.json.parseFromSlice(
         ChatCompletionStream,
@@ -54,7 +54,7 @@ fn processChunk(ptr: *anyopaque, chunk: []const u8) !void {
         },
     );
     defer parsed_chunk.deinit();
-    const content = parsed_chunk.value.choices[0].delta.content orelse return;
+    const content = parsed_chunk.value.choices[0].delta.content orelse return 0;
     std.debug.print("{s}", .{content});
 
     var content_list: std.ArrayList(u8) = undefined;
@@ -68,21 +68,27 @@ fn processChunk(ptr: *anyopaque, chunk: []const u8) !void {
     }
     try content_list.appendSlice(content);
     self.content = try content_list.toOwnedSlice();
+    return content.len;
 }
-fn streamFinished(ptr: *anyopaque) !void {
-    const self: *ChatCompletion = @ptrCast(@alignCast(ptr));
-    _ = self;
-    // std.debug.print("\n\n------We did it!------\n\n", .{});
-}
+// fn streamFinished(ptr: *anyopaque) !void {
+//     const self: *ChatCompletion = @ptrCast(@alignCast(ptr));
+//     _ = self;
+//     // std.debug.print("\n\n------We did it!------\n\n", .{});
+// }
 
-fn streamHandler(self: *ChatCompletion) StreamHandler {
-    return .{
-        .ptr = self,
-        .gpa = self.gpa,
-        .id = self.id,
-        .created = self.created,
-        .content = self.content,
-        .processChunkFn = processChunk,
-        .streamFinishedFn = streamFinished,
-    };
+pub const Writer = std.io.GenericWriter(*ChatCompletion, error{OutOfMemory}, processChunk);
+
+pub fn writer(self: *ChatCompletion) Writer {
+    return .{ .context = self };
 }
+// fn streamHandler(self: *ChatCompletion) StreamHandler {
+//     return .{
+//         .ptr = self,
+//         .gpa = self.gpa,
+//         .id = self.id,
+//         .created = self.created,
+//         .content = self.content,
+//         .processChunkFn = processChunk,
+//         .streamFinishedFn = streamFinished,
+//     };
+// }

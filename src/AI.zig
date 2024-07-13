@@ -118,10 +118,18 @@ pub fn chatCompletionRaw(
     return response;
 }
 
+// pub fn chatCompletionStreamParsed(
+//     self: *AI,
+//     payload: CompletionPayload,
+//     writer: anytype,
+// ) !void {
+//
+// }
+
 pub fn chatCompletionStreamRaw(
     self: *AI,
     payload: CompletionPayload,
-    handler: StreamHandler,
+    writer: anytype,
 ) !void {
     var client = std.http.Client{
         .allocator = self.gpa,
@@ -170,10 +178,11 @@ pub fn chatCompletionStreamRaw(
 
         if (!std.mem.startsWith(u8, chunk, "data: ")) continue;
 
-        try handler.processChunk(chunk[6..]);
+        writer.write(chunk[6..]);
+        // try handler.processChunk(chunk[6..]);
     }
 
-    try handler.streamFinished();
+    // try handler.streamFinished();
 }
 
 // I used content-length in completion in my other implementation, do I need that?
