@@ -3,6 +3,7 @@ const Provider = @import("shared.zig").Provider;
 const Message = @import("shared.zig").Message;
 const CompletionPayload = @import("shared.zig").CompletionPayload;
 const StreamHandler = @import("shared.zig").StreamHandler;
+const Embeddings = @import("Embeddings.zig");
 
 pub const AI = @This();
 
@@ -188,6 +189,76 @@ pub fn chatCompletionStreamRaw(
     }
 }
 
+pub fn embeddingsRaw(
+    self: *AI,
+    payload: Embeddings.EmbeddingsPayload,
+) ![]const u8 {
+    var client = std.http.Client{
+        .allocator = self.gpa,
+    };
+    defer client.deinit();
+
+    var response_header_buffer: [2048]u8 = undefined;
+
+    const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/embeddings", .{self.base_url});
+    defer self.gpa.free(uri_string);
+    const uri = try std.Uri.parse(uri_string);
+
+    const body = try std.json.stringifyAlloc(self.gpa, payload, .{
+        .whitespace = .minified,
+        .emit_null_optional_fields = false,
+    });
+    defer self.gpa.free(body);
+
+    const headers = std.http.Client.Request.Headers{
+        .content_type = .{ .override = "application/json" },
+        .authorization = .{ .override = self.authorization_header_value },
+    };
+
+    var req = try client.open(.POST, uri, .{
+        .server_header_buffer = &response_header_buffer,
+        .headers = headers,
+        .extra_headers = self.extra_headers.items,
+    });
+    defer req.deinit();
+
+    req.transfer_encoding = .chunked;
+
+    try req.send();
+    try req.writer().writeAll(body);
+    try req.finish();
+    try req.wait();
+
+    const status = req.response.status;
+    if (status != .ok) {
+        std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
+        return error.HttpRequestFailed;
+    }
+
+    return try req.reader().readAllAlloc(self.gpa, 3276800);
+}
+
+pub fn embeddingsParsed(
+    self: *AI,
+    payload: Embeddings.EmbeddingsPayload,
+) !std.json.Parsed(EmbeddingsResponse) {
+    const response = try self.embeddingsRaw(payload);
+    defer self.gpa.free(response);
+
+    return try std.json.parseFromSlice(EmbeddingsResponse, self.gpa, response, .{ .allocate = .alloc_always });
+}
+
+pub fn embeddingsLeaky(
+    self: *AI,
+    arena: std.mem.Allocator,
+    payload: Embeddings.EmbeddingsPayload,
+) !EmbeddingsResponse {
+    const response = try self.embeddingsRaw(payload);
+    defer self.gpa.free(response);
+
+    return try std.json.parseFromSliceLeaky(EmbeddingsResponse, arena, response, .{ .allocate = .alloc_always });
+}
+
 fn setAuthorizationHeader(self: *AI, provider: Provider) !void {
     const env_var = provider.getKeyVar();
     const api_key = try std.process.getEnvVarOwned(self.gpa, env_var);
@@ -225,4 +296,17 @@ const ChatCompletionResponse = struct {
     choices: []Choice,
     // Usage is not returned by the Completion endpoint when streamed.
     usage: ?Usage = null,
+};
+
+const EmbeddingsResponse = struct {
+    object: []const u8,
+    data: []struct {
+        index: u32,
+        object: []const u8,
+        embedding: []f32,
+    },
+    model: []const u8,
+    usage: Embeddings.Usage,
+    id: []const u8,
+    created: u64,
 };
