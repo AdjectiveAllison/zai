@@ -187,6 +187,7 @@ pub fn chatCompletionStreamRaw(
         }
     }
 }
+
 fn setAuthorizationHeader(self: *AI, provider: Provider) !void {
     const env_var = provider.getKeyVar();
     const api_key = try std.process.getEnvVarOwned(self.gpa, env_var);
