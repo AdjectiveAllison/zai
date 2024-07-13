@@ -85,3 +85,22 @@ pub const Provider = enum {
         };
     }
 };
+
+const Usage = struct {
+    prompt_tokens: u64,
+    completion_tokens: ?u64,
+    total_tokens: u64,
+};
+
+const Choice = struct { index: usize, finish_reason: ?[]const u8, message: Message };
+
+// TODO: If I return direct response without explicitly passing in an arena then go ahead and create a deinit method inside of this that cleans it all up.
+pub const ChatCompletionResponse = struct {
+    id: []const u8,
+    object: []const u8,
+    created: u64,
+    model: []const u8,
+    choices: []Choice,
+    // Usage is not returned by the Completion endpoint when streamed.
+    usage: ?Usage = null,
+};

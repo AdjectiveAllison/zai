@@ -3,12 +3,12 @@ const zai = @import("zai");
 
 pub fn main() !void {
     std.debug.print("Tag name: {s}\n", .{@tagName(zai.ChatCompletionModel.codellama_70b_instruct_fp16)});
+
     var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa_state.deinit() == .ok);
     const gpa = gpa_state.allocator();
 
     var ai: zai.AI = undefined;
-
     try ai.init(gpa, zai.Provider.OctoAI);
     defer ai.deinit();
 
@@ -35,8 +35,15 @@ pub fn main() !void {
     chat_completion.init(gpa);
     defer chat_completion.deinit();
 
-    try chat_completion.request(&ai, payload);
+    // Use streamAndPrint to see the response as it comes in
+    try chat_completion.streamAndPrint(&ai, payload);
 
-    std.debug.print("\nFull response: {s}\n", .{chat_completion.content});
+    // Print the full response and ID after streaming is complete
+    std.debug.print("\nFull response: {s}\n", .{chat_completion.content.items});
     std.debug.print("\nID: {s}\n", .{chat_completion.id});
+
+    // Alternatively, if you don't want to print while streaming:
+    // try chat_completion.request(&ai, payload);
+    // std.debug.print("\nFull response: {s}\n", .{chat_completion.content.items});
+    // std.debug.print("\nID: {s}\n", .{chat_completion.id});
 }

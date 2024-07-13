@@ -1,27 +1,29 @@
-const AI = @This();
-
 const std = @import("std");
 const Provider = @import("shared.zig").Provider;
 const Message = @import("shared.zig").Message;
 const CompletionPayload = @import("shared.zig").CompletionPayload;
 const StreamHandler = @import("shared.zig").StreamHandler;
 
+pub const AI = @This();
+
 base_url: []const u8,
 authorization_header_value: []const u8,
 organization: ?[]const u8 = null,
 gpa: std.mem.Allocator,
-headers: []const std.http.Header,
+extra_headers: std.ArrayList(std.http.Header),
 
-//api_key: []const u8, organization_id: ?[]const u8\
 pub fn init(self: *AI, gpa: std.mem.Allocator, provider: Provider) !void {
     self.gpa = gpa;
     self.base_url = provider.getBaseUrl();
+    self.extra_headers = std.ArrayList(std.http.Header).init(gpa);
 
-    try self.setHeaders(provider);
+    try self.setAuthorizationHeader(provider);
+    try self.setExtraHeaders();
 }
 
 pub fn deinit(self: *AI) void {
     self.gpa.free(self.authorization_header_value);
+    self.extra_headers.deinit();
 }
 
 // returns owned object with an arena packaged with it to deinit on response.
@@ -41,7 +43,6 @@ pub fn chatCompletionParsed(
             .allocate = .alloc_always,
         },
     );
-
     return parsed_completion;
 }
 
@@ -63,11 +64,10 @@ pub fn chatCompletionLeaky(
             .allocate = .alloc_always,
         },
     );
-
     return parsed_completion;
 }
 
-// CALLER OWNS THE FREEING RESPOSNSIBILITIES
+// CALLER OWNS THE FREEING RESPONSIBILITIES
 pub fn chatCompletionRaw(
     self: *AI,
     payload: CompletionPayload,
@@ -79,25 +79,26 @@ pub fn chatCompletionRaw(
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    // TODO: store api endpoints in a structure somehow and generate them at the point of initialization.
     const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
     defer self.gpa.free(uri_string);
-    const uri = std.Uri.parse(uri_string) catch unreachable;
+    const uri = try std.Uri.parse(uri_string);
 
     const body = try std.json.stringifyAlloc(self.gpa, payload, .{
         .whitespace = .minified,
         .emit_null_optional_fields = false,
     });
-
-    // consider verbose printing the body if debugging.
-    //std.debug.print("BODY:\n{s}\n\n", .{body});
     defer self.gpa.free(body);
 
-    var req = try client.open(
-        .POST,
-        uri,
-        .{ .server_header_buffer = &response_header_buffer, .extra_headers = self.headers },
-    );
+    const headers = std.http.Client.Request.Headers{
+        .content_type = .{ .override = "application/json" },
+        .authorization = .{ .override = self.authorization_header_value },
+    };
+
+    var req = try client.open(.POST, uri, .{
+        .server_header_buffer = &response_header_buffer,
+        .headers = headers,
+        .extra_headers = self.extra_headers.items,
+    });
     defer req.deinit();
 
     req.transfer_encoding = .chunked;
@@ -113,8 +114,7 @@ pub fn chatCompletionRaw(
         std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
     }
 
-    const response = req.reader().readAllAlloc(self.gpa, 3276800) catch unreachable;
-
+    const response = try req.reader().readAllAlloc(self.gpa, 3276800);
     return response;
 }
 
@@ -131,65 +131,51 @@ pub fn chatCompletionStreamRaw(
     payload: CompletionPayload,
     writer: anytype,
 ) !void {
-    // std.debug.print("Starting chatCompletionStreamRaw\n", .{});
-    var client = std.http.Client{
-        .allocator = self.gpa,
-    };
+    var client = std.http.Client{ .allocator = self.gpa };
     defer client.deinit();
-
-    // std.debug.print("Client initialized\n", .{});
 
     var response_header_buffer: [2048]u8 = undefined;
 
     const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
     defer self.gpa.free(uri_string);
-    const uri = std.Uri.parse(uri_string) catch unreachable;
-
-    // std.debug.print("URI parsed: {s}\n", .{uri_string});
+    const uri = try std.Uri.parse(uri_string);
 
     const body = try std.json.stringifyAlloc(self.gpa, payload, .{
         .whitespace = .minified,
         .emit_null_optional_fields = false,
     });
-
     defer self.gpa.free(body);
-    // std.debug.print("Request body: {s}\n", .{body});
 
-    var req = try client.open(
-        .POST,
-        uri,
-        .{ .server_header_buffer = &response_header_buffer, .extra_headers = self.headers },
-    );
+    const headers = std.http.Client.Request.Headers{
+        .content_type = .{ .override = "application/json" },
+        .authorization = .{ .override = self.authorization_header_value },
+    };
+
+    var req = try client.open(.POST, uri, .{
+        .server_header_buffer = &response_header_buffer,
+        .headers = headers,
+        .extra_headers = self.extra_headers.items,
+    });
     defer req.deinit();
-
-    // std.debug.print("Request opened\n", .{});
 
     req.transfer_encoding = .chunked;
 
     try req.send();
     try req.writer().writeAll(body);
     try req.finish();
-    // std.debug.print("Request sent and finished\n", .{});
-
     try req.wait();
-    // std.debug.print("Request wait completed\n", .{});
 
     const status = req.response.status;
-    // std.debug.print("Response status: {}\n", .{status});
     if (status != .ok) {
         std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
     }
 
-    // std.debug.print("Starting to read chunks\n", .{});
     var content_received = false;
     while (true) {
         const chunk = try req.reader().readUntilDelimiterOrEofAlloc(self.gpa, '\n', 1638400) orelse break;
         defer self.gpa.free(chunk);
 
-        // std.debug.print("Received chunk: {s}\n", .{chunk});
-
         if (std.mem.eql(u8, chunk, "data: [DONE]")) {
-            // std.debug.print("Received DONE signal\n", .{});
             break;
         }
 
@@ -199,31 +185,19 @@ pub fn chatCompletionStreamRaw(
         if (write_result > 0) {
             content_received = true;
         }
-
-        if (content_received) {
-            // std.debug.print("Content received and processed\n", .{});
-        }
     }
-
-    // std.debug.print("Finished reading chunks\n", .{});
 }
-
-// I used content-length in completion in my other implementation, do I need that?
-fn setHeaders(self: *AI, provider: Provider) !void {
+fn setAuthorizationHeader(self: *AI, provider: Provider) !void {
     const env_var = provider.getKeyVar();
-
-    // this should bubble up an error if the Enviornment variable doesn't exist.
     const api_key = try std.process.getEnvVarOwned(self.gpa, env_var);
     defer self.gpa.free(api_key);
 
-    self.authorization_header_value = std.fmt.allocPrint(self.gpa, "Bearer {s}", .{api_key}) catch unreachable;
+    self.authorization_header_value = try std.fmt.allocPrint(self.gpa, "Bearer {s}", .{api_key});
+}
 
-    var headers = [_]std.http.Header{
-        std.http.Header{ .name = "Content-Type", .value = "application/json" },
-        std.http.Header{ .name = "Authorization", .value = self.authorization_header_value },
-        std.http.Header{ .name = "accept", .value = "*/*" },
-    };
-    self.headers = headers[0..];
+fn setExtraHeaders(self: *AI) !void {
+    try self.extra_headers.append(.{ .name = "User-Agent", .value = "zai/0.1.0" });
+    try self.extra_headers.append(.{ .name = "Accept", .value = "*/*" });
 }
 
 // TODO: Do something with role later on potentially.
