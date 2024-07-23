@@ -1,0 +1,17 @@
+.{
+    .name = "zai-cli",
+    .version = "0.0.0",
+
+    .dependencies = .{
+        .zai = .{
+            .url = "git+https://github.com/AdjectiveAllison/zai.git#67c1140cff27063965bf02385baaf19e6d99f1e1",
+            .hash = "1220ba8dac342df707ddeac270c68cd37da675509eaffc103c639119a0b9d98a2224",
+        },
+    },
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

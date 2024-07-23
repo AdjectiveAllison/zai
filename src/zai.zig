@@ -1,11 +1,12 @@
 const std = @import("std");
 pub const AI = @import("AI.zig");
 pub const ChatCompletion = @import("ChatCompletion.zig");
+pub const Embeddings = @import("Embeddings.zig");
 pub const StreamHandler = @import("shared.zig").StreamHandler;
 pub const Provider = @import("shared.zig").Provider;
 pub const Message = @import("shared.zig").Message;
 pub const CompletionPayload = @import("shared.zig").CompletionPayload;
-
+pub const ChatCompletionModel = @import("providers/OctoAI.zig").ChatCompletionModel;
 // std.meta.stringToEnum could be very useful for model strings -> enum conversion. null is returned if enum isn't found, thus we could early-exit out of clients if they pass in an incorrect one.
 
 //TODO: Handle organization in relevant cases(OpenAI)
@@ -67,27 +68,27 @@ pub const CompletionPayload = @import("shared.zig").CompletionPayload;
 //     }
 // };
 
-pub const EmbeddingsPayload = struct {
-    input: []const u8,
-    model: []const u8,
-};
+// pub const EmbeddingsPayload = struct {
+//     input: []const u8,
+//     model: []const u8,
+// };
 
-pub const Embeddings = struct {
-    id: []const u8,
-    data: []EmbeddingsData,
-    // model: []const u8,
-    // usage: struct {
-    //     total_tokens: u64,
-    //     prompt_tokens: u64,
-    // },
-};
+// pub const Embeddings = struct {
+//     id: []const u8,
+//     data: []EmbeddingsData,
+//     // model: []const u8,
+//     // usage: struct {
+//     //     total_tokens: u64,
+//     //     prompt_tokens: u64,
+//     // },
+// };
 
-pub const EmbeddingsData = struct {
-    index: u32,
-    object: []const u8,
-    // TODO: Explore @Vector() and if it can be used in zig.
-    embedding: []f32,
-};
+// pub const EmbeddingsData = struct {
+//     index: u32,
+//     object: []const u8,
+//     // TODO: Explore @Vector() and if it can be used in zig.
+//     embedding: []f32,
+// };
 
 //TODO: enums for models available on multiple providers.
 
