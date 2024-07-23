@@ -24,7 +24,7 @@
 
         const exe = b.addExecutable(.{
             .name = "my-project",
-            .root_source_file = .{ .path = "src/main.zig" },
+            .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -44,3 +44,4 @@
 ## Examples located in [examples directory](examples/)
 
 1. [Chat Completion](examples/chat_completion.zig)
+2. [Embeddings](examples/embeddings.zig)
