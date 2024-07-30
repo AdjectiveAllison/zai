@@ -32,12 +32,18 @@ pub fn run(gpa: std.mem.Allocator, args: []const []const u8) !void {
     chat_completion.init(gpa);
     defer chat_completion.deinit();
 
-    try chat_completion.request(&ai, payload);
-
-    if (!cmd.stream) {
-        const stdout = std.io.getStdOut().writer();
-        try stdout.print("{s}", .{chat_completion.content});
+    if (payload.stream) {
+        try chat_completion.streamAndPrint(&ai, payload);
+    } else {
+        try chat_completion.request(&ai, payload);
+        std.debug.print("{s}\n", .{chat_completion.content.items});
     }
+    // std.debug.print("\nID: {s}\n", .{chat_completion.id});
+
+    // if (!cmd.stream) {
+    //     const stdout = std.io.getStdOut().writer();
+    //     try stdout.print("{s}", .{chat_completion.content.items});
+    // }
 }
 
 pub const Command = struct {
@@ -102,7 +108,7 @@ pub const Command = struct {
             \\Options:
             \\
             \\--help, -h       Prints this help and extits
-            \\--stdin, -       Format bytes from stdin; ouptut to stdout 
+            \\--stdin, -       Format bytes from stdin; ouptut to stdout
         , .{});
 
         std.process.exit(1);
