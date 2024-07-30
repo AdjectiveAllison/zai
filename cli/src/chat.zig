@@ -36,6 +36,7 @@ pub fn run(gpa: std.mem.Allocator, args: []const []const u8) !void {
         try chat_completion.streamAndPrint(&ai, payload);
     } else {
         try chat_completion.request(&ai, payload);
+        // TODO: Change to stdOut print instead of debug.
         std.debug.print("{s}\n", .{chat_completion.content.items});
     }
 }
