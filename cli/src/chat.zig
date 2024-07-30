@@ -38,12 +38,6 @@ pub fn run(gpa: std.mem.Allocator, args: []const []const u8) !void {
         try chat_completion.request(&ai, payload);
         std.debug.print("{s}\n", .{chat_completion.content.items});
     }
-    // std.debug.print("\nID: {s}\n", .{chat_completion.id});
-
-    // if (!cmd.stream) {
-    //     const stdout = std.io.getStdOut().writer();
-    //     try stdout.print("{s}", .{chat_completion.content.items});
-    // }
 }
 
 pub const Command = struct {
