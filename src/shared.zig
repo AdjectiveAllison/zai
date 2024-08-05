@@ -68,12 +68,14 @@ pub const Provider = enum {
     OpenAI,
     TogetherAI,
     OctoAI,
+    OpenRouter,
 
     pub fn getBaseUrl(self: Provider) []const u8 {
         return switch (self) {
             .OpenAI => "https://api.openai.com/v1",
             .TogetherAI => "https://api.together.xyz/v1",
             .OctoAI => "https://text.octoai.run/v1",
+            .OpenRouter => "https://openrouter.ai/api/v1",
         };
     }
 
@@ -82,6 +84,7 @@ pub const Provider = enum {
             .OpenAI => "OPENAI_API_KEY",
             .TogetherAI => "TOGETHER_API_KEY",
             .OctoAI => "OCTO_API_KEY",
+            .OpenRouter => "OPENROUTER_API_KEY",
         };
     }
 };
