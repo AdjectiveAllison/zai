@@ -13,10 +13,20 @@ organization: ?[]const u8 = null,
 gpa: std.mem.Allocator,
 extra_headers: std.ArrayList(std.http.Header),
 
+pub const AIError = error{
+    HttpRequestFailed,
+    InvalidResponse,
+    UnexpectedStatus,
+    ApiError,
+} || std.mem.Allocator.Error || std.json.ParseFromSliceError;
+
 pub fn init(self: *AI, gpa: std.mem.Allocator, provider: Provider) !void {
-    self.gpa = gpa;
-    self.base_url = provider.getBaseUrl();
-    self.extra_headers = std.ArrayList(std.http.Header).init(gpa);
+    self.* = .{
+        .gpa = gpa,
+        .base_url = provider.getBaseUrl(),
+        .extra_headers = std.ArrayList(std.http.Header).init(gpa),
+        .authorization_header_value = undefined,
+    };
 
     try self.setAuthorizationHeader(provider);
     try self.setExtraHeaders();
@@ -27,15 +37,14 @@ pub fn deinit(self: *AI) void {
     self.extra_headers.deinit();
 }
 
-// returns owned object with an arena packaged with it to deinit on response.
 pub fn chatCompletionParsed(
     self: *AI,
     payload: CompletionPayload,
-) !std.json.Parsed(ChatCompletionResponse) {
+) AIError!std.json.Parsed(ChatCompletionResponse) {
     const response = try self.chatCompletionRaw(payload);
     defer self.gpa.free(response);
 
-    const parsed_completion = try std.json.parseFromSlice(
+    return std.json.parseFromSlice(
         ChatCompletionResponse,
         self.gpa,
         response,
@@ -43,20 +52,21 @@ pub fn chatCompletionParsed(
             .ignore_unknown_fields = true,
             .allocate = .alloc_always,
         },
-    );
-    return parsed_completion;
+    ) catch |err| {
+        std.debug.print("Error parsing JSON: {}\n", .{err});
+        return AIError.InvalidResponse;
+    };
 }
 
-// deinit of arena passed in should prevent leaks.
 pub fn chatCompletionLeaky(
     self: *AI,
     arena: std.mem.Allocator,
     payload: CompletionPayload,
-) !ChatCompletionResponse {
+) AIError!ChatCompletionResponse {
     const response = try self.chatCompletionRaw(payload);
     defer self.gpa.free(response);
 
-    const parsed_completion = try std.json.parseFromSliceLeaky(
+    return std.json.parseFromSliceLeaky(
         ChatCompletionResponse,
         arena,
         response,
@@ -64,15 +74,16 @@ pub fn chatCompletionLeaky(
             .ignore_unknown_fields = true,
             .allocate = .alloc_always,
         },
-    );
-    return parsed_completion;
+    ) catch |err| {
+        std.debug.print("Error parsing JSON: {}\n", .{err});
+        return AIError.InvalidResponse;
+    };
 }
 
-// CALLER OWNS THE FREEING RESPONSIBILITIES
 pub fn chatCompletionRaw(
     self: *AI,
     payload: CompletionPayload,
-) ![]const u8 {
+) AIError![]const u8 {
     var client = std.http.Client{
         .allocator = self.gpa,
     };
@@ -111,27 +122,23 @@ pub fn chatCompletionRaw(
 
     const status = req.response.status;
     if (status != .ok) {
-        //TODO: Do this better.
-        std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
+        const error_response = try req.reader().readAllAlloc(self.gpa, 3276800);
+        defer self.gpa.free(error_response);
+
+        std.debug.print("Error response: {s}\n", .{error_response});
+        return AIError.ApiError;
     }
 
-    const response = try req.reader().readAllAlloc(self.gpa, 3276800);
-    return response;
+    return req.reader().readAllAlloc(self.gpa, 3276800) catch {
+        return AIError.HttpRequestFailed;
+    };
 }
-
-// pub fn chatCompletionStreamParsed(
-//     self: *AI,
-//     payload: CompletionPayload,
-//     writer: anytype,
-// ) !void {
-//
-// }
 
 pub fn chatCompletionStreamRaw(
     self: *AI,
     payload: CompletionPayload,
     writer: anytype,
-) !void {
+) AIError!void {
     var client = std.http.Client{ .allocator = self.gpa };
     defer client.deinit();
 
@@ -168,7 +175,11 @@ pub fn chatCompletionStreamRaw(
 
     const status = req.response.status;
     if (status != .ok) {
-        std.debug.print("STATUS NOT OKAY\n{s}\nWE GOT AN ERROR\n", .{status.phrase().?});
+        const error_response = try req.reader().readAllAlloc(self.gpa, 3276800);
+        defer self.gpa.free(error_response);
+
+        std.debug.print("Error response: {s}\n", .{error_response});
+        return AIError.ApiError;
     }
 
     var content_received = false;
@@ -187,7 +198,13 @@ pub fn chatCompletionStreamRaw(
             content_received = true;
         }
     }
+
+    if (!content_received) {
+        return AIError.InvalidResponse;
+    }
 }
+
+// ... (rest of the code remains the same)
 
 pub fn embeddingsRaw(
     self: *AI,
