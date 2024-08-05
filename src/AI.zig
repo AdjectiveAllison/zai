@@ -18,7 +18,15 @@ pub const AIError = error{
     InvalidResponse,
     UnexpectedStatus,
     ApiError,
-} || std.mem.Allocator.Error || std.json.ParseFromSliceError;
+    InvalidUri,
+    ConnectionError,
+    TlsError,
+    RequestError,
+    SendError,
+    WriteError,
+    FinishError,
+    WaitError,
+} || std.mem.Allocator.Error || std.json.ParseFromValueError;
 
 pub fn init(self: *AI, gpa: std.mem.Allocator, provider: Provider) !void {
     self.* = .{
@@ -93,7 +101,10 @@ pub fn chatCompletionRaw(
 
     const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
     defer self.gpa.free(uri_string);
-    const uri = try std.Uri.parse(uri_string);
+    const uri = std.Uri.parse(uri_string) catch |err| {
+        std.debug.print("Error parsing URI: {}\n", .{err});
+        return AIError.InvalidUri;
+    };
 
     const body = try std.json.stringifyAlloc(self.gpa, payload, .{
         .whitespace = .minified,
@@ -106,23 +117,60 @@ pub fn chatCompletionRaw(
         .authorization = .{ .override = self.authorization_header_value },
     };
 
-    var req = try client.open(.POST, uri, .{
+    var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
         .headers = headers,
         .extra_headers = self.extra_headers.items,
-    });
+    }) catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer,
+            error.ConnectionRefused,
+            error.NetworkUnreachable,
+            error.ConnectionTimedOut,
+            error.TemporaryNameServerFailure,
+            error.NameServerFailure,
+            error.UnknownHostName,
+            error.HostLacksNetworkAddresses,
+            error.UnexpectedConnectFailure,
+            => AIError.ConnectionError,
+            error.TlsInitializationFailed => AIError.TlsError,
+            error.UnsupportedUriScheme,
+            error.UnexpectedWriteFailure,
+            error.InvalidContentLength,
+            error.UnsupportedTransferEncoding,
+            error.UriMissingHost,
+            error.CertificateBundleLoadFailure,
+            => AIError.RequestError,
+            else => AIError.HttpRequestFailed,
+        };
+    };
     defer req.deinit();
 
     req.transfer_encoding = .chunked;
 
-    try req.send();
-    try req.writer().writeAll(body);
-    try req.finish();
-    try req.wait();
+    req.send() catch |err| {
+        std.debug.print("Send error: {}\n", .{err});
+        return AIError.SendError;
+    };
+    req.writer().writeAll(body) catch |err| {
+        std.debug.print("Write error: {}\n", .{err});
+        return AIError.WriteError;
+    };
+    req.finish() catch |err| {
+        std.debug.print("Finish error: {}\n", .{err});
+        return AIError.FinishError;
+    };
+    req.wait() catch |err| {
+        std.debug.print("Wait error: {}\n", .{err});
+        return AIError.WaitError;
+    };
 
     const status = req.response.status;
     if (status != .ok) {
-        const error_response = try req.reader().readAllAlloc(self.gpa, 3276800);
+        const error_response = req.reader().readAllAlloc(self.gpa, 3276800) catch |err| {
+            std.debug.print("Error reading response: {}\n", .{err});
+            return AIError.HttpRequestFailed;
+        };
         defer self.gpa.free(error_response);
 
         std.debug.print("Error response: {s}\n", .{error_response});
@@ -146,7 +194,10 @@ pub fn chatCompletionStreamRaw(
 
     const uri_string = try std.fmt.allocPrint(self.gpa, "{s}/chat/completions", .{self.base_url});
     defer self.gpa.free(uri_string);
-    const uri = try std.Uri.parse(uri_string);
+    const uri = std.Uri.parse(uri_string) catch |err| {
+        std.debug.print("Error parsing URI: {}\n", .{err});
+        return AIError.InvalidUri;
+    };
 
     const body = try std.json.stringifyAlloc(self.gpa, payload, .{
         .whitespace = .minified,
@@ -159,23 +210,60 @@ pub fn chatCompletionStreamRaw(
         .authorization = .{ .override = self.authorization_header_value },
     };
 
-    var req = try client.open(.POST, uri, .{
+    var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
         .headers = headers,
         .extra_headers = self.extra_headers.items,
-    });
+    }) catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer,
+            error.ConnectionRefused,
+            error.NetworkUnreachable,
+            error.ConnectionTimedOut,
+            error.TemporaryNameServerFailure,
+            error.NameServerFailure,
+            error.UnknownHostName,
+            error.HostLacksNetworkAddresses,
+            error.UnexpectedConnectFailure,
+            => AIError.ConnectionError,
+            error.TlsInitializationFailed => AIError.TlsError,
+            error.UnsupportedUriScheme,
+            error.UnexpectedWriteFailure,
+            error.InvalidContentLength,
+            error.UnsupportedTransferEncoding,
+            error.UriMissingHost,
+            error.CertificateBundleLoadFailure,
+            => AIError.RequestError,
+            else => AIError.HttpRequestFailed,
+        };
+    };
     defer req.deinit();
 
     req.transfer_encoding = .chunked;
 
-    try req.send();
-    try req.writer().writeAll(body);
-    try req.finish();
-    try req.wait();
+    req.send() catch |err| {
+        std.debug.print("Send error: {}\n", .{err});
+        return AIError.SendError;
+    };
+    req.writer().writeAll(body) catch |err| {
+        std.debug.print("Write error: {}\n", .{err});
+        return AIError.WriteError;
+    };
+    req.finish() catch |err| {
+        std.debug.print("Finish error: {}\n", .{err});
+        return AIError.FinishError;
+    };
+    req.wait() catch |err| {
+        std.debug.print("Wait error: {}\n", .{err});
+        return AIError.WaitError;
+    };
 
     const status = req.response.status;
     if (status != .ok) {
-        const error_response = try req.reader().readAllAlloc(self.gpa, 3276800);
+        const error_response = req.reader().readAllAlloc(self.gpa, 3276800) catch |err| {
+            std.debug.print("Error reading response: {}\n", .{err});
+            return AIError.HttpRequestFailed;
+        };
         defer self.gpa.free(error_response);
 
         std.debug.print("Error response: {s}\n", .{error_response});
@@ -184,7 +272,17 @@ pub fn chatCompletionStreamRaw(
 
     var content_received = false;
     while (true) {
-        const chunk = try req.reader().readUntilDelimiterOrEofAlloc(self.gpa, '\n', 1638400) orelse break;
+        const chunk = req.reader().readUntilDelimiterOrEofAlloc(self.gpa, '\n', 1638400) catch |err| {
+            return switch (err) {
+                error.ConnectionResetByPeer, error.ConnectionTimedOut => AIError.ConnectionError,
+                error.TlsFailure, error.TlsAlert => AIError.TlsError,
+                error.UnexpectedReadFailure => AIError.HttpRequestFailed,
+                error.EndOfStream => break, // End of stream, exit the loop
+                error.OutOfMemory => return error.OutOfMemory,
+                error.StreamTooLong => AIError.InvalidResponse,
+                else => AIError.HttpRequestFailed,
+            };
+        } orelse break;
         defer self.gpa.free(chunk);
 
         if (std.mem.eql(u8, chunk, "data: [DONE]")) {
@@ -193,18 +291,17 @@ pub fn chatCompletionStreamRaw(
 
         if (!std.mem.startsWith(u8, chunk, "data: ")) continue;
 
-        const write_result = try writer.write(chunk[6..]);
-        if (write_result > 0) {
-            content_received = true;
-        }
+        _ = writer.write(chunk[6..]) catch |err| {
+            std.debug.print("Write error: {}\n", .{err});
+            return AIError.WriteError;
+        };
+        content_received = true;
     }
 
     if (!content_received) {
         return AIError.InvalidResponse;
     }
 }
-
-// ... (rest of the code remains the same)
 
 pub fn embeddingsRaw(
     self: *AI,
