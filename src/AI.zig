@@ -1,5 +1,6 @@
 const std = @import("std");
-const Provider = @import("shared.zig").Provider;
+const Providers = @import("providers.zig");
+const Provider = Providers.Provider;
 const Message = @import("shared.zig").Message;
 const CompletionPayload = @import("shared.zig").CompletionPayload;
 const StreamHandler = @import("shared.zig").StreamHandler;
@@ -7,6 +8,7 @@ const Embeddings = @import("Embeddings.zig");
 
 pub const AI = @This();
 
+provider: Provider,
 base_url: []const u8,
 authorization_header_value: []const u8,
 organization: ?[]const u8 = null,
@@ -30,8 +32,9 @@ pub const AIError = error{
 
 pub fn init(self: *AI, gpa: std.mem.Allocator, provider: Provider) !void {
     self.* = .{
+        .provider = provider,
         .gpa = gpa,
-        .base_url = provider.getBaseUrl(),
+        .base_url = provider.Info.base_url,
         .extra_headers = std.ArrayList(std.http.Header).init(gpa),
         .authorization_header_value = undefined,
     };
@@ -373,8 +376,8 @@ pub fn embeddingsLeaky(
     return try std.json.parseFromSliceLeaky(EmbeddingsResponse, arena, response, .{ .allocate = .alloc_always });
 }
 
-fn setAuthorizationHeader(self: *AI, provider: Provider) !void {
-    const env_var = provider.getKeyVar();
+fn setAuthorizationHeader(self: *AI) !void {
+    const env_var = self.provider.Info.api_key_env_var;
     const api_key = try std.process.getEnvVarOwned(self.gpa, env_var);
     defer self.gpa.free(api_key);
 
