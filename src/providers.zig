@@ -22,6 +22,8 @@ pub const ModelInfo = struct {
     name: []const u8,
     id: []const u8,
     type: ModelType,
+    cost_per_million_tokens: f32,
+    max_token_length: u32,
 };
 
 pub const OpenAI = @import("providers/OpenAI.zig");

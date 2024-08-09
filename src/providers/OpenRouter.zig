@@ -16,14 +16,18 @@ pub const Models = struct {
             .name = "anthropic_claude_3_5_sonnet",
             .id = "anthropic/claude-3.5-sonnet",
             .type = .chat,
+            .cost_per_million_tokens = 3,
+            .max_token_length = 200000,
         };
     }
     pub fn meta_llama_llama_3_1_405b() providers.ModelInfo {
         return .{
-            .display_name = "Meta LLaMa 3.1 405B",
+            .display_name = "Meta LLaMa 3.1 405B base",
             .name = "meta_llama_llama_3_1_405b",
             .id = "meta-llama/llama-3.1-405b",
             .type = .completion,
+            .cost_per_million_tokens = 2,
+            .max_token_length = 131072,
         };
     }
 };
