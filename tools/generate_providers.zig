@@ -6,7 +6,6 @@ const ProviderInfo = struct {
     name: []const u8,
     base_url: []const u8,
     api_key_env_var: []const u8,
-    models_endpoint: []const u8,
     supported_model_types: []const ModelType,
 };
 
@@ -29,28 +28,24 @@ const Provider = enum {
                 .name = "OpenAI",
                 .base_url = "https://api.openai.com/v1",
                 .api_key_env_var = "OPENAI_API_KEY",
-                .models_endpoint = "/models",
                 .supported_model_types = &[_]ModelType{ .chat, .completion, .embedding },
             },
             .OctoAI => .{
                 .name = "OctoAI",
                 .base_url = "https://text.octoai.run/v1",
                 .api_key_env_var = "OCTO_API_KEY",
-                .models_endpoint = "/models",
                 .supported_model_types = &[_]ModelType{ .chat, .completion },
             },
             .TogetherAI => .{
                 .name = "TogetherAI",
                 .base_url = "https://api.together.xyz/v1",
                 .api_key_env_var = "TOGETHER_API_KEY",
-                .models_endpoint = "/models",
                 .supported_model_types = &[_]ModelType{ .chat, .completion },
             },
             .OpenRouter => .{
                 .name = "OpenRouter",
                 .base_url = "https://openrouter.ai/api/v1",
                 .api_key_env_var = "OPENROUTER_API_KEY",
-                .models_endpoint = "/models",
                 .supported_model_types = &[_]ModelType{ .chat, .completion },
             },
         };
@@ -84,6 +79,7 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
         \\const std = @import("std");
         \\
         \\pub const Provider = enum {
+        \\
     );
 
     // Dynamically generate the ProviderType enum fields
@@ -100,7 +96,6 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
         \\pub const ProviderInfo = struct {
         \\    base_url: []const u8,
         \\    api_key_env_var: []const u8,
-        \\    models_endpoint: []const u8,
         \\    supported_model_types: []const ModelType,
         \\};
         \\
@@ -110,6 +105,7 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
         \\    id: []const u8,
         \\    type: ModelType,
         \\};
+        \\
         \\
     );
 
@@ -122,6 +118,7 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
         \\
         \\pub fn getProviderInfo(provider: Provider) ProviderInfo {
         \\    return switch (provider) {
+        \\
     );
 
     inline for (std.meta.fields(Provider)) |provider_field| {
@@ -132,12 +129,13 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
         \\    };
         \\}
         \\
-        \\pub fn getModels(provider: Provider) type {
+        \\pub fn getModels(provider: Provider) []const ModelInfo {
         \\    return switch (provider) {
+        \\
     );
 
     inline for (std.meta.fields(Provider)) |provider_field| {
-        try writer.print("        .{s} => {s}.Models,\n", .{ provider_field.name, provider_field.name });
+        try writer.print("        .{s} => {s}.getAllModels(),\n", .{ provider_field.name, provider_field.name });
     }
 
     try writer.writeAll(
@@ -165,6 +163,7 @@ fn generateProviderFile(allocator: std.mem.Allocator, provider: Provider) !void 
         \\const providers = @import("../providers.zig");
         \\
         \\pub const info = providers.ProviderInfo{
+        \\
     );
 
     const model_types = try formatModelTypes(allocator, info.supported_model_types);
@@ -173,7 +172,6 @@ fn generateProviderFile(allocator: std.mem.Allocator, provider: Provider) !void 
     try writer.print(
         \\    .base_url = "{s}",
         \\    .api_key_env_var = "{s}",
-        \\    .models_endpoint = "{s}",
         \\    .supported_model_types = &[_]providers.ModelType{{ {s} }},
         \\}};
         \\
@@ -182,7 +180,6 @@ fn generateProviderFile(allocator: std.mem.Allocator, provider: Provider) !void 
     , .{
         info.base_url,
         info.api_key_env_var,
-        info.models_endpoint,
         model_types,
     });
 
@@ -192,6 +189,20 @@ fn generateProviderFile(allocator: std.mem.Allocator, provider: Provider) !void 
 
     try writer.writeAll(
         \\};
+        \\
+        \\pub fn getAllModels() []const providers.ModelInfo {
+        \\    const declarations = @typeInfo(Models).Struct.decls;
+        \\
+        \\    var models: [declarations.len]providers.ModelInfo = undefined;
+        \\    comptime var i = 0;
+        \\    inline for (declarations) |declaration| {
+        \\        if (@TypeOf(@field(Models, declaration.name)) == fn () providers.ModelInfo) {
+        \\            models[i] = @field(Models, declaration.name)();
+        \\            i += 1;
+        \\        }
+        \\    }
+        \\    return models[0..i];
+        \\}
         \\
     );
 }
