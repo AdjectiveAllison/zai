@@ -34,13 +34,13 @@ const Provider = enum {
                 .name = "OctoAI",
                 .base_url = "https://text.octoai.run/v1",
                 .api_key_env_var = "OCTO_API_KEY",
-                .supported_model_types = &[_]ModelType{ .chat, .completion },
+                .supported_model_types = &[_]ModelType{ .chat, .embedding },
             },
             .TogetherAI => .{
                 .name = "TogetherAI",
                 .base_url = "https://api.together.xyz/v1",
                 .api_key_env_var = "TOGETHER_API_KEY",
-                .supported_model_types = &[_]ModelType{ .chat, .completion },
+                .supported_model_types = &[_]ModelType{ .chat, .completion, .embedding },
             },
             .OpenRouter => .{
                 .name = "OpenRouter",

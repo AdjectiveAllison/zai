@@ -6,7 +6,7 @@ const providers = @import("../providers.zig");
 pub const info = providers.ProviderInfo{
     .base_url = "https://text.octoai.run/v1",
     .api_key_env_var = "OCTO_API_KEY",
-    .supported_model_types = &[_]providers.ModelType{ .chat, .completion },
+    .supported_model_types = &[_]providers.ModelType{ .chat, .embedding },
 };
 
 pub const Models = struct {
