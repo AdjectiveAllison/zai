@@ -14,6 +14,8 @@ const ModelInfo = struct {
     name: []const u8,
     id: []const u8,
     type: ModelType,
+    cost_per_million_tokens: f32,
+    max_token_length: u32,
 };
 
 const Provider = enum {
@@ -33,7 +35,7 @@ const Provider = enum {
             .OctoAI => .{
                 .name = "OctoAI",
                 .base_url = "https://text.octoai.run/v1",
-                .api_key_env_var = "OCTO_API_KEY",
+                .api_key_env_var = "OCTOAI_TOKEN",
                 .supported_model_types = &[_]ModelType{ .chat, .embedding },
             },
             .TogetherAI => .{
@@ -104,6 +106,8 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
         \\    name: []const u8,
         \\    id: []const u8,
         \\    type: ModelType,
+        \\    cost_per_million_tokens: f32,
+        \\    max_token_length: u32,
         \\};
         \\
         \\
@@ -215,10 +219,12 @@ fn generateModelMethod(writer: anytype, model: ModelInfo) !void {
         \\            .name = "{2s}",
         \\            .id = "{3s}",
         \\            .type = .{4s},
+        \\            .cost_per_million_tokens = {5d},
+        \\            .max_token_length = {6d},
         \\        }};
         \\    }}
         \\
-    , .{ model.name, model.display_name, model.name, model.id, @tagName(model.type) });
+    , .{ model.name, model.display_name, model.name, model.id, @tagName(model.type), model.cost_per_million_tokens, model.max_token_length });
 }
 
 fn formatModelTypes(allocator: std.mem.Allocator, types: []const ModelType) ![]const u8 {
@@ -235,27 +241,112 @@ fn formatModelTypes(allocator: std.mem.Allocator, types: []const ModelType) ![]c
 
 fn getModelsForProvider(provider_name: []const u8) []const ModelInfo {
     if (std.mem.eql(u8, provider_name, "OpenAI")) {
-        return &[_]ModelInfo{
-            .{ .display_name = "GPT-3.5 Turbo", .name = "gpt_3_5_turbo", .id = "gpt-3.5-turbo", .type = .chat },
-            .{ .display_name = "GPT-4", .name = "gpt_4", .id = "gpt-4", .type = .chat },
-            .{ .display_name = "Text Embedding Ada 002", .name = "text_embedding_ada_002", .id = "text-embedding-ada-002", .type = .embedding },
-        };
+        return getOpenAIModels();
     } else if (std.mem.eql(u8, provider_name, "OctoAI")) {
-        return &[_]ModelInfo{
-            .{ .display_name = "Meta LLaMa 3.1 8B Instruct", .name = "meta_llama_3_1_8b_instruct", .id = "meta-llama-3.1-8b-instruct", .type = .chat },
-            .{ .display_name = "Mixtral 8x7B Instruct", .name = "mixtral_8x7b_instruct", .id = "mixtral-8x7b-instruct", .type = .chat },
-        };
+        return getOctoAIModels();
     } else if (std.mem.eql(u8, provider_name, "TogetherAI")) {
+        // More to do later
         return &[_]ModelInfo{
-            .{ .display_name = "Databricks DBRX Instruct", .name = "databricks_dbrx_instruct", .id = "databricks/dbrx-instruct", .type = .chat },
-            .{ .display_name = "Meta LLaMa 3 8B HF", .name = "meta_llama_Llama_3_8b_hf", .id = "meta-llama/Llama-3-8b-hf", .type = .completion },
+            .{ .display_name = "Databricks DBRX Instruct", .name = "databricks_dbrx_instruct", .id = "databricks/dbrx-instruct", .type = .chat, .cost_per_million_tokens = 1.20, .max_token_length = 32768 },
+            .{ .display_name = "Meta LLaMa 3 8B HF", .name = "meta_llama_Llama_3_8b_hf", .id = "meta-llama/Llama-3-8b-hf", .type = .completion, .cost_per_million_tokens = 0.20, .max_token_length = 8192 },
         };
     } else if (std.mem.eql(u8, provider_name, "OpenRouter")) {
+        // More to do later
         return &[_]ModelInfo{
-            .{ .display_name = "Anthropic Claude 3.5 Sonnet", .name = "anthropic_claude_3_5_sonnet", .id = "anthropic/claude-3.5-sonnet", .type = .chat },
-            .{ .display_name = "Meta LLaMa 3.1 405B", .name = "meta_llama_llama_3_1_405b", .id = "meta-llama/llama-3.1-405b", .type = .completion },
+            .{ .display_name = "Anthropic Claude 3.5 Sonnet", .name = "anthropic_claude_3_5_sonnet", .id = "anthropic/claude-3.5-sonnet", .type = .chat, .cost_per_million_tokens = 3.0, .max_token_length = 200000 },
+            .{ .display_name = "Meta LLaMa 3.1 405B base", .name = "meta_llama_llama_3_1_405b", .id = "meta-llama/llama-3.1-405b", .type = .completion, .cost_per_million_tokens = 2.0, .max_token_length = 131072 },
         };
     } else {
         @panic("Unknown provider");
     }
+}
+
+pub fn getOctoAIModels() []const ModelInfo {
+    return &[_]ModelInfo{
+        .{ .display_name = "GTE Large", .name = "gte_large", .id = "thenlper/gte-large", .type = .embedding, .cost_per_million_tokens = 0.05, .max_token_length = 8192 },
+        .{ .display_name = "Mistral 7B Instruct", .name = "mistral_7b_instruct", .id = "mistral-7b-instruct", .type = .chat, .cost_per_million_tokens = 0.15, .max_token_length = 32768 },
+        .{ .display_name = "WizardLM 2 8x22B", .name = "wizardlm_2_8x22b", .id = "wizardlm-2-8x22b", .type = .chat, .cost_per_million_tokens = 1.20, .max_token_length = 65536 },
+        .{ .display_name = "Mixtral 8x7B Instruct", .name = "mixtral_8x7b_instruct", .id = "mixtral-8x7b-instruct", .type = .chat, .cost_per_million_tokens = 0.45, .max_token_length = 32768 },
+        .{ .display_name = "Mixtral 8x22B Instruct", .name = "mixtral_8x22b_instruct", .id = "mixtral-8x22b-instruct", .type = .chat, .cost_per_million_tokens = 1.20, .max_token_length = 65536 },
+        .{ .display_name = "Meta LLaMa 3.1 8B Instruct", .name = "meta_llama_3_1_8b_instruct", .id = "meta-llama-3.1-8b-instruct", .type = .chat, .cost_per_million_tokens = 0.15, .max_token_length = 131072 },
+        .{ .display_name = "Meta LLaMa 3.1 70B Instruct", .name = "meta_llama_3_1_70b_instruct", .id = "meta-llama-3.1-70b-instruct", .type = .chat, .cost_per_million_tokens = 0.90, .max_token_length = 131072 },
+        .{ .display_name = "Meta LLaMa 3.1 405B Instruct", .name = "meta_llama_3_1_405b_instruct", .id = "meta-llama-3.1-405b-instruct", .type = .chat, .cost_per_million_tokens = 3.00, .max_token_length = 131072 },
+    };
+}
+
+pub fn getOpenAIModels() []const ModelInfo {
+    return &[_]ModelInfo{
+        .{
+            .display_name = "GPT-4o",
+            .name = "gpt_4o",
+            .id = "gpt-4o",
+            .type = .chat,
+            .cost_per_million_tokens = 5.00,
+            .max_token_length = 128000,
+        },
+        .{
+            .display_name = "GPT-4o Mini",
+            .name = "gpt_4o_mini",
+            .id = "gpt-4o-mini",
+            .type = .chat,
+            .cost_per_million_tokens = 0.15,
+            .max_token_length = 128000,
+        },
+        .{
+            .display_name = "GPT-4",
+            .name = "gpt_4",
+            .id = "gpt-4",
+            .type = .chat,
+            .cost_per_million_tokens = 30.00,
+            .max_token_length = 8192,
+        },
+        .{
+            .display_name = "GPT-4 Turbo",
+            .name = "gpt_4_turbo",
+            .id = "gpt-4-turbo",
+            .type = .chat,
+            .cost_per_million_tokens = 10.00,
+            .max_token_length = 128000,
+        },
+        .{
+            .display_name = "GPT-3.5 Turbo",
+            .name = "gpt_3_5_turbo",
+            .id = "gpt-3.5-turbo",
+            .type = .chat,
+            .cost_per_million_tokens = 0.50,
+            .max_token_length = 16385,
+        },
+        .{
+            .display_name = "GPT-3.5 Turbo Instruct",
+            .name = "gpt_3_5_turbo_instruct",
+            .id = "gpt-3.5-turbo-instruct",
+            .type = .completion,
+            .cost_per_million_tokens = 1.50,
+            .max_token_length = 4096,
+        },
+        .{
+            .display_name = "Text Embedding 3 Large",
+            .name = "text_embedding_3_large",
+            .id = "text-embedding-3-large",
+            .type = .embedding,
+            .cost_per_million_tokens = 0.13,
+            .max_token_length = 8191,
+        },
+        .{
+            .display_name = "Text Embedding 3 Small",
+            .name = "text_embedding_3_small",
+            .id = "text-embedding-3-small",
+            .type = .embedding,
+            .cost_per_million_tokens = 0.02,
+            .max_token_length = 8191,
+        },
+        .{
+            .display_name = "Text Embedding Ada 002",
+            .name = "text_embedding_ada_002",
+            .id = "text-embedding-ada-002",
+            .type = .embedding,
+            .cost_per_million_tokens = 0.10,
+            .max_token_length = 8191,
+        },
+    };
 }

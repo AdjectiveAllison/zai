@@ -16,6 +16,8 @@ pub const Models = struct {
             .name = "databricks_dbrx_instruct",
             .id = "databricks/dbrx-instruct",
             .type = .chat,
+            .cost_per_million_tokens = 1.2,
+            .max_token_length = 32768,
         };
     }
     pub fn meta_llama_Llama_3_8b_hf() providers.ModelInfo {
@@ -24,6 +26,8 @@ pub const Models = struct {
             .name = "meta_llama_Llama_3_8b_hf",
             .id = "meta-llama/Llama-3-8b-hf",
             .type = .completion,
+            .cost_per_million_tokens = 0.2,
+            .max_token_length = 8192,
         };
     }
 };
