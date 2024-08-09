@@ -7,20 +7,20 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Define the fetch_models step
-    const fetch_models = b.addExecutable(.{
-        .name = "fetch_models",
+    // Define the generate_providers step
+    const generate_providers = b.addExecutable(.{
+        .name = "generate_providers",
         .root_source_file = b.path("tools/generate_providers.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     // Create a run step for fetch_models
-    const run_fetch_models = b.addRunArtifact(fetch_models);
+    const run_generate_providers = b.addRunArtifact(generate_providers);
 
     // Create a generate step that depends on running fetch_models
     const generate_step = b.step("generate", "Generate provider models");
-    generate_step.dependOn(&run_fetch_models.step);
+    generate_step.dependOn(&run_generate_providers.step);
 
     // Create the zai module
     const zai_mod = b.addModule(package_name, .{

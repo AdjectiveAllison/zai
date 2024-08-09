@@ -6,7 +6,7 @@ const providers = @import("../providers.zig");
 pub const info = providers.ProviderInfo{
     .base_url = "https://api.together.xyz/v1",
     .api_key_env_var = "TOGETHER_API_KEY",
-    .supported_model_types = &[_]providers.ModelType{ .chat, .completion },
+    .supported_model_types = &[_]providers.ModelType{ .chat, .completion, .embedding },
 };
 
 pub const Models = struct {
