@@ -7,6 +7,7 @@ const ProviderInfo = struct {
     base_url: []const u8,
     api_key_env_var: []const u8,
     models_endpoint: []const u8,
+    supported_model_types: []const ModelType,
 };
 
 const ModelInfo = struct {
@@ -16,37 +17,41 @@ const ModelInfo = struct {
     type: ModelType,
 };
 
-const Providers = enum {
+const Provider = enum {
     OpenAI,
     OctoAI,
     TogetherAI,
     OpenRouter,
 
-    pub fn getInfo(self: Providers) ProviderInfo {
+    pub fn getInfo(self: Provider) ProviderInfo {
         return switch (self) {
             .OpenAI => .{
                 .name = "OpenAI",
                 .base_url = "https://api.openai.com/v1",
                 .api_key_env_var = "OPENAI_API_KEY",
                 .models_endpoint = "/models",
+                .supported_model_types = &[_]ModelType{ .chat, .completion, .embedding },
             },
             .OctoAI => .{
                 .name = "OctoAI",
                 .base_url = "https://text.octoai.run/v1",
                 .api_key_env_var = "OCTO_API_KEY",
                 .models_endpoint = "/models",
+                .supported_model_types = &[_]ModelType{ .chat, .completion },
             },
             .TogetherAI => .{
                 .name = "TogetherAI",
                 .base_url = "https://api.together.xyz/v1",
                 .api_key_env_var = "TOGETHER_API_KEY",
                 .models_endpoint = "/models",
+                .supported_model_types = &[_]ModelType{ .chat, .completion },
             },
             .OpenRouter => .{
                 .name = "OpenRouter",
                 .base_url = "https://openrouter.ai/api/v1",
                 .api_key_env_var = "OPENROUTER_API_KEY",
                 .models_endpoint = "/models",
+                .supported_model_types = &[_]ModelType{ .chat, .completion },
             },
         };
     }
@@ -61,8 +66,8 @@ pub fn main() !void {
     try generateMainFile(allocator);
 
     // Generate provider-specific files
-    inline for (std.meta.fields(Providers)) |provider_field| {
-        try generateProviderFile(allocator, @field(Providers, provider_field.name));
+    inline for (std.meta.fields(Provider)) |provider_field| {
+        try generateProviderFile(allocator, @field(Provider, provider_field.name));
     }
 }
 
@@ -73,17 +78,16 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
 
     var writer = file.writer();
 
-    // Write the initial part
     try writer.writeAll(
         \\// This file is auto-generated. Do not edit manually.
         \\
         \\const std = @import("std");
         \\
-        \\pub const ProviderType = enum {
+        \\pub const Provider = enum {
     );
 
     // Dynamically generate the ProviderType enum fields
-    inline for (std.meta.fields(Providers)) |provider_field| {
+    inline for (std.meta.fields(Provider)) |provider_field| {
         try writer.print("    {s},\n", .{provider_field.name});
     }
 
@@ -93,6 +97,13 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
         \\
         \\pub const ModelType = enum { chat, completion, embedding };
         \\
+        \\pub const ProviderInfo = struct {
+        \\    base_url: []const u8,
+        \\    api_key_env_var: []const u8,
+        \\    models_endpoint: []const u8,
+        \\    supported_model_types: []const ModelType,
+        \\};
+        \\
         \\pub const ModelInfo = struct {
         \\    display_name: []const u8,
         \\    name: []const u8,
@@ -100,71 +111,44 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
         \\    type: ModelType,
         \\};
         \\
-        \\pub const ProviderInterface = struct {
-        \\    base_url: []const u8,
-        \\    api_key_env_var: []const u8,
-        \\    models_endpoint: []const u8,
-        \\    getModelInfo: *const fn ([]const u8) ?ModelInfo,
-        \\    modelToString: *const fn (anytype) []const u8,
-        \\    modelFromString: *const fn ([]const u8) ?type,
-        \\    listModels: *const fn () []const ModelInfo,
-        \\};
-        \\
-        \\pub const Provider = struct {
-        \\    provider_type: ProviderType,
-        \\    interface: ProviderInterface,
-        \\
-        \\    pub fn init(provider_type: ProviderType) Provider {
-        \\        return switch (provider_type) {
     );
 
-    // Dynamically generate the Provider.init function
-    inline for (std.meta.fields(Providers)) |provider_field| {
-        try writer.print("            .{s} => .{{ .provider_type = .{s}, .interface = @import(\"providers/{s}.zig\").getInterface() }},\n", .{ provider_field.name, provider_field.name, provider_field.name });
+    // Import provider-specific modules
+    inline for (std.meta.fields(Provider)) |provider_field| {
+        try writer.print("pub const {s} = @import(\"providers/{s}.zig\");\n", .{ provider_field.name, provider_field.name });
     }
 
-    // Close the switch and write the rest of the file
     try writer.writeAll(
-        \\        };
-        \\    }
         \\
-        \\    pub fn getBaseUrl(self: Provider) []const u8 {
-        \\        return self.interface.base_url;
-        \\    }
+        \\pub fn getProviderInfo(provider: Provider) ProviderInfo {
+        \\    return switch (provider) {
+    );
+
+    inline for (std.meta.fields(Provider)) |provider_field| {
+        try writer.print("        .{s} => {s}.info,\n", .{ provider_field.name, provider_field.name });
+    }
+
+    try writer.writeAll(
+        \\    };
+        \\}
         \\
-        \\    pub fn getApiKeyEnvVar(self: Provider) []const u8 {
-        \\        return self.interface.api_key_env_var;
-        \\    }
-        \\
-        \\    pub fn getModelsEndpoint(self: Provider) []const u8 {
-        \\        return self.interface.models_endpoint;
-        \\    }
-        \\
-        \\    pub fn getModelInfo(self: Provider, model_name: []const u8) ?ModelInfo {
-        \\        return self.interface.getModelInfo(model_name);
-        \\    }
-        \\
-        \\    pub fn modelToString(self: Provider, model: anytype) []const u8 {
-        \\        return self.interface.modelToString(model);
-        \\    }
-        \\
-        \\    pub fn modelFromString(self: Provider, model_name: []const u8) ?type {
-        \\        return self.interface.modelFromString(model_name);
-        \\    }
-        \\
-        \\    pub fn listModels(self: Provider) []const ModelInfo {
-        \\        return self.interface.listModels();
-        \\    }
-        \\};
+        \\pub fn getModels(provider: Provider) type {
+        \\    return switch (provider) {
+    );
+
+    inline for (std.meta.fields(Provider)) |provider_field| {
+        try writer.print("        .{s} => {s}.Models,\n", .{ provider_field.name, provider_field.name });
+    }
+
+    try writer.writeAll(
+        \\    };
+        \\}
     );
 }
 
-fn generateProviderFile(allocator: std.mem.Allocator, provider: Providers) !void {
+fn generateProviderFile(allocator: std.mem.Allocator, provider: Provider) !void {
     const info = provider.getInfo();
     const models = getModelsForProvider(info.name);
-
-    // Create the providers directory if it doesn't exist
-    try std.fs.cwd().makePath("src/providers");
 
     const file_path = try std.fmt.allocPrint(allocator, "src/providers/{s}.zig", .{@tagName(provider)});
     defer allocator.free(file_path);
@@ -174,112 +158,70 @@ fn generateProviderFile(allocator: std.mem.Allocator, provider: Providers) !void
 
     var writer = file.writer();
 
-    const formatted_models = try formatModels(allocator, models);
-    defer allocator.free(formatted_models);
-
-    const formatted_model_data = try formatModelData(allocator, models);
-    defer allocator.free(formatted_model_data);
-
-    try writer.print(
+    try writer.writeAll(
         \\// This file is auto-generated. Do not edit manually.
         \\
         \\const std = @import("std");
         \\const providers = @import("../providers.zig");
         \\
-        \\pub const {0s} = struct {{
-        \\    pub const Model = enum {{
-        \\{1s}    }};
-        \\
-        \\    const ModelData = struct {{
-        \\        display_name: []const u8,
-        \\        id: []const u8,
-        \\        type: providers.ModelType,
-        \\    }};
-        \\
-        \\    const model_data = std.ComptimeStringMap(ModelData, .{{
-        \\{2s}    }});
-        \\
-        \\    pub fn getInterface() providers.ProviderInterface {{
-        \\        return .{{
-        \\            .base_url = "{3s}",
-        \\            .api_key_env_var = "{4s}",
-        \\            .models_endpoint = "{5s}",
-        \\            .getModelInfo = getModelInfo,
-        \\            .modelToString = modelToString,
-        \\            .modelFromString = modelFromString,
-        \\            .listModels = listModels,
-        \\        }};
-        \\    }}
-        \\
-        \\    fn getModelInfo(model_name: []const u8) ?providers.ModelInfo {{
-        \\        if (model_data.get(model_name)) |data| {{
-        \\            return providers.ModelInfo{{
-        \\                .display_name = data.display_name,
-        \\                .name = model_name,
-        \\                .id = data.id,
-        \\                .type = data.type,
-        \\            }};
-        \\        }}
-        \\        return null;
-        \\    }}
-        \\
-        \\    fn modelToString(model: []const u8) []const u8 {{
-        \\        return model;
-        \\    }}
-        \\
-        \\    fn modelFromString(model_name: []const u8) ?[]const u8 {{
-        \\        if (model_data.get(model_name)) |_| {{
-        \\            return model_name;
-        \\        }}
-        \\        return null;
-        \\    }}
-        \\
-        \\    fn listModels() []const providers.ModelInfo {{
-        \\        comptime {{
-        \\            var models: [model_data.map.len]providers.ModelInfo = undefined;
-        \\            for (model_data.kvs, 0..) |kv, i| {{
-        \\                models[i] = .{{
-        \\                    .display_name = kv.value.display_name,
-        \\                    .name = kv.key,
-        \\                    .id = kv.value.id,
-        \\                    .type = kv.value.type,
-        \\                }};
-        \\            }}
-        \\            return &models;
-        \\        }}
-        \\    }}
+        \\pub const info = providers.ProviderInfo{
+    );
+
+    const model_types = try formatModelTypes(allocator, info.supported_model_types);
+    defer allocator.free(model_types);
+
+    try writer.print(
+        \\    .base_url = "{s}",
+        \\    .api_key_env_var = "{s}",
+        \\    .models_endpoint = "{s}",
+        \\    .supported_model_types = &[_]providers.ModelType{{ {s} }},
         \\}};
+        \\
+        \\pub const Models = struct {{
+        \\
     , .{
-        @tagName(provider),
-        formatted_models,
-        formatted_model_data,
         info.base_url,
         info.api_key_env_var,
         info.models_endpoint,
+        model_types,
     });
+
+    for (models) |model| {
+        try generateModelMethod(writer, model);
+    }
+
+    try writer.writeAll(
+        \\};
+        \\
+    );
 }
 
-fn formatModels(allocator: std.mem.Allocator, models: []const ModelInfo) ![]const u8 {
+fn generateModelMethod(writer: anytype, model: ModelInfo) !void {
+    try writer.print(
+        \\    pub fn {0s}() providers.ModelInfo {{
+        \\        return .{{
+        \\            .display_name = "{1s}",
+        \\            .name = "{2s}",
+        \\            .id = "{3s}",
+        \\            .type = .{4s},
+        \\        }};
+        \\    }}
+        \\
+    , .{ model.name, model.display_name, model.name, model.id, @tagName(model.type) });
+}
+
+fn formatModelTypes(allocator: std.mem.Allocator, types: []const ModelType) ![]const u8 {
     var result = std.ArrayList(u8).init(allocator);
     errdefer result.deinit();
 
-    for (models) |model| {
-        try result.writer().print("        {s},\n", .{model.name});
+    for (types, 0..) |t, i| {
+        if (i > 0) try result.appendSlice(", ");
+        try result.writer().print(".{s}", .{@tagName(t)});
     }
 
     return result.toOwnedSlice();
 }
 
-fn formatModelData(allocator: std.mem.Allocator, models: []const ModelInfo) ![]const u8 {
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
-
-    for (models) |model| {
-        try result.writer().print("        .{{ .{s} = .{{ .display_name = \"{s}\", .id = \"{s}\", .type = .{s} }} }},\n", .{ model.name, model.display_name, model.id, @tagName(model.type) });
-    }
-
-    return result.toOwnedSlice();
-}
 fn getModelsForProvider(provider_name: []const u8) []const ModelInfo {
     if (std.mem.eql(u8, provider_name, "OpenAI")) {
         return &[_]ModelInfo{
