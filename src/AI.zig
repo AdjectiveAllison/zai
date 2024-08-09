@@ -34,12 +34,12 @@ pub fn init(self: *AI, gpa: std.mem.Allocator, provider: Provider) !void {
     self.* = .{
         .provider = provider,
         .gpa = gpa,
-        .base_url = provider.Info.base_url,
+        .base_url = Providers.getProviderInfo(provider).base_url,
         .extra_headers = std.ArrayList(std.http.Header).init(gpa),
         .authorization_header_value = undefined,
     };
 
-    try self.setAuthorizationHeader(provider);
+    try self.setAuthorizationHeader();
     try self.setExtraHeaders();
 }
 
@@ -377,7 +377,7 @@ pub fn embeddingsLeaky(
 }
 
 fn setAuthorizationHeader(self: *AI) !void {
-    const env_var = self.provider.Info.api_key_env_var;
+    const env_var = Providers.getProviderInfo(self.provider).api_key_env_var;
     const api_key = try std.process.getEnvVarOwned(self.gpa, env_var);
     defer self.gpa.free(api_key);
 

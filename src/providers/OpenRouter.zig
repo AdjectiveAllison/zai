@@ -4,26 +4,26 @@ const std = @import("std");
 const providers = @import("../providers.zig");
 
 pub const info = providers.ProviderInfo{
-    .base_url = "https://text.octoai.run/v1",
-    .api_key_env_var = "OCTO_API_KEY",
+    .base_url = "https://openrouter.ai/api/v1",
+    .api_key_env_var = "OPENROUTER_API_KEY",
     .supported_model_types = &[_]providers.ModelType{ .chat, .completion },
 };
 
 pub const Models = struct {
-    pub fn meta_llama_3_1_8b_instruct() providers.ModelInfo {
+    pub fn anthropic_claude_3_5_sonnet() providers.ModelInfo {
         return .{
-            .display_name = "Meta LLaMa 3.1 8B Instruct",
-            .name = "meta_llama_3_1_8b_instruct",
-            .id = "meta-llama-3.1-8b-instruct",
+            .display_name = "Anthropic Claude 3.5 Sonnet",
+            .name = "anthropic_claude_3_5_sonnet",
+            .id = "anthropic/claude-3.5-sonnet",
             .type = .chat,
         };
     }
-    pub fn mixtral_8x7b_instruct() providers.ModelInfo {
+    pub fn meta_llama_llama_3_1_405b() providers.ModelInfo {
         return .{
-            .display_name = "Mixtral 8x7B Instruct",
-            .name = "mixtral_8x7b_instruct",
-            .id = "mixtral-8x7b-instruct",
-            .type = .chat,
+            .display_name = "Meta LLaMa 3.1 405B",
+            .name = "meta_llama_llama_3_1_405b",
+            .id = "meta-llama/llama-3.1-405b",
+            .type = .completion,
         };
     }
 };
