@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
     // Define the fetch_models step
     const fetch_models = b.addExecutable(.{
         .name = "fetch_models",
-        .root_source_file = b.path("tools/fetch_models.zig"),
+        .root_source_file = b.path("tools/generate_providers.zig"),
         .target = target,
         .optimize = optimize,
     });
