@@ -77,13 +77,12 @@ pub fn main() !void {
     try writer.writeAll("    api_key_env_var: []const u8,\n");
     try writer.writeAll("    models_endpoint: []const u8,\n\n");
 
-    try writer.writeAll("    pub fn init(provider_type: ProviderType) Provider {\n");
-    try writer.writeAll("        return switch (provider_type) {\n");
+    try writer.writeAll("    pub fn init(comptime provider_type: ProviderType) Provider {\n");
+    try writer.writeAll("        const info = switch (provider_type) {\n");
     inline for (std.meta.fields(Providers)) |provider_field| {
         const provider = @field(Providers, provider_field.name);
         const info = provider.getInfo();
         try writer.print("            .{s} => .{{\n", .{provider_field.name});
-        try writer.print("                .provider_type = .{s},\n", .{provider_field.name});
         try writer.print("                .name = \"{s}\",\n", .{info.name});
         try writer.print("                .base_url = \"{s}\",\n", .{info.base_url});
         try writer.print("                .api_key_env_var = \"{s}\",\n", .{info.api_key_env_var});
@@ -91,37 +90,46 @@ pub fn main() !void {
         try writer.writeAll("            },\n");
     }
     try writer.writeAll("        };\n");
+    try writer.writeAll("        return .{\n");
+    try writer.writeAll("            .provider_type = provider_type,\n");
+    try writer.writeAll("            .name = info.name,\n");
+    try writer.writeAll("            .base_url = info.base_url,\n");
+    try writer.writeAll("            .api_key_env_var = info.api_key_env_var,\n");
+    try writer.writeAll("            .models_endpoint = info.models_endpoint,\n");
+    try writer.writeAll("        };\n");
     try writer.writeAll("    }\n\n");
 
-    try writer.writeAll("    pub const Model = union(enum) {\n");
-    inline for (std.meta.fields(Providers)) |provider_field| {
-        const provider = @field(Providers, provider_field.name);
-        const info = provider.getInfo();
-        try writer.print("        {s}: enum {{\n", .{provider_field.name});
-        const models = getModelsForProvider(info.name);
-        for (models) |model| {
-            const sanitized_model = try sanitizeModelName(allocator, model.id);
-            defer allocator.free(sanitized_model);
-            try writer.print("            {s},\n", .{sanitized_model});
-        }
-        try writer.writeAll("        },\n");
-    }
-    try writer.writeAll("    };\n\n");
-
-    try writer.writeAll("    pub fn modelFromString(self: Provider, model_name: []const u8) ?Model {\n");
+    try writer.writeAll("    pub fn models(self: Provider) type {\n");
     try writer.writeAll("        return switch (self.provider_type) {\n");
     inline for (std.meta.fields(Providers)) |provider_field| {
-        try writer.print("            .{s} => if (std.meta.stringToEnum(Model.{s}, model_name)) |m| Model{{ .{s} = m }} else null,\n", .{ provider_field.name, provider_field.name, provider_field.name });
+        try writer.print("            .{s} => {s}Model,\n", .{ provider_field.name, provider_field.name });
     }
     try writer.writeAll("        };\n");
     try writer.writeAll("    }\n\n");
 
-    try writer.writeAll("    pub fn modelToId(self: Provider, model: Model) []const u8 {\n");
-    try writer.writeAll("        return switch (model) {\n");
     inline for (std.meta.fields(Providers)) |provider_field| {
         const provider = @field(Providers, provider_field.name);
         const info = provider.getInfo();
-        try writer.print("            .{s} => |m| switch (m) {{\n", .{provider_field.name});
+        try writer.print("    pub const {s}Model = enum {{\n", .{provider_field.name});
+        const models = getModelsForProvider(info.name);
+        for (models) |model| {
+            const sanitized_model = try sanitizeModelName(allocator, model.id);
+            defer allocator.free(sanitized_model);
+            try writer.print("        {s},\n", .{sanitized_model});
+        }
+        try writer.writeAll("    };\n\n");
+    }
+
+    try writer.writeAll("    pub fn modelFromString(self: Provider, model_name: []const u8) ?self.models() {\n");
+    try writer.writeAll("        return std.meta.stringToEnum(self.models(), model_name);\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    pub fn modelToId(self: Provider, model: self.models()) []const u8 {\n");
+    try writer.writeAll("        return switch (self.provider_type) {\n");
+    inline for (std.meta.fields(Providers)) |provider_field| {
+        const provider = @field(Providers, provider_field.name);
+        const info = provider.getInfo();
+        try writer.print("            .{s} => switch (model) {{\n", .{provider_field.name});
         const models = getModelsForProvider(info.name);
         for (models) |model| {
             const sanitized_model = try sanitizeModelName(allocator, model.id);
@@ -133,12 +141,12 @@ pub fn main() !void {
     try writer.writeAll("        };\n");
     try writer.writeAll("    }\n\n");
 
-    try writer.writeAll("    pub fn modelGetType(self: Provider, model: Model) ModelType {\n");
-    try writer.writeAll("        return switch (model) {\n");
+    try writer.writeAll("    pub fn modelGetType(self: Provider, model: self.models()) ModelType {\n");
+    try writer.writeAll("        return switch (self.provider_type) {\n");
     inline for (std.meta.fields(Providers)) |provider_field| {
         const provider = @field(Providers, provider_field.name);
         const info = provider.getInfo();
-        try writer.print("            .{s} => |m| switch (m) {{\n", .{provider_field.name});
+        try writer.print("            .{s} => switch (model) {{\n", .{provider_field.name});
         const models = getModelsForProvider(info.name);
         for (models) |model| {
             const sanitized_model = try sanitizeModelName(allocator, model.id);
@@ -158,7 +166,6 @@ pub fn main() !void {
     }
     try writer.writeAll("};\n");
 }
-
 fn sanitizeModelName(allocator: std.mem.Allocator, model: []const u8) ![]u8 {
     var sanitized = std.ArrayList(u8).init(allocator);
     defer sanitized.deinit();

@@ -2,14 +2,23 @@ const std = @import("std");
 const zai = @import("zai");
 
 pub fn main() !void {
-    std.debug.print("Tag name: {s}\n", .{@tagName(zai.ChatCompletionModel.codellama_70b_instruct_fp16)});
-
     var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa_state.deinit() == .ok);
     const gpa = gpa_state.allocator();
 
+    const provider = zai.Provider.init(.OpenRouter);
+
+    // // BELOW I cannot auto complete with my language server. The fact that `type` in models is not specific, I can't auto selext the enum for the models represented by the specific provider that I've chosen to initializse with. That is a problem!
+    // provider.models.
+
+    // // This one works well, because we can use the provider to decide how the string is intepereted and if we have the model available. This is the easy one to do.
+    // provider.modelFromString("llama-blah-blah");
+
+    // // This one has the same problem as the regular `provider.models` part. Since it's just a `type`, we don't get auto complete!
+    // provider.modelToId(model: self.models)
+
     var ai: zai.AI = undefined;
-    try ai.init(gpa, zai.Provider.OctoAI);
+    try ai.init(gpa, provider);
     defer ai.deinit();
 
     var messages = [_]zai.Message{
@@ -24,7 +33,7 @@ pub fn main() !void {
     };
 
     const payload = zai.CompletionPayload{
-        .model = "meta-llama-3-70b-instruct",
+        .model = "llama",
         .messages = messages[0..],
         .temperature = 0.1,
         .stream = true,
