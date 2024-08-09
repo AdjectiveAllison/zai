@@ -91,42 +91,54 @@ fn generateMainFile(allocator: std.mem.Allocator) !void {
     try writer.writeAll("    type: ModelType,\n");
     try writer.writeAll("};\n\n");
 
-    try writer.writeAll("pub const Provider = union(ProviderType) {\n");
-    inline for (std.meta.fields(Providers)) |provider_field| {
-        try writer.print("    {s}: @import(\"providers/{s}.zig\").{s},\n", .{ provider_field.name, provider_field.name, provider_field.name });
-    }
-    try writer.writeAll("\n");
+    try writer.writeAll("pub const ProviderInterface = struct {\n");
+    try writer.writeAll("    base_url: []const u8,\n");
+    try writer.writeAll("    api_key_env_var: []const u8,\n");
+    try writer.writeAll("    models_endpoint: []const u8,\n");
+    try writer.writeAll("    getModelInfo: *const fn ([]const u8) ?ModelInfo,\n");
+    try writer.writeAll("    modelToString: *const fn (anytype) []const u8,\n");
+    try writer.writeAll("    modelFromString: *const fn ([]const u8) ?anytype,\n");
+    try writer.writeAll("    listModels: *const fn () []const ModelInfo,\n");
+    try writer.writeAll("};\n\n");
+
+    try writer.writeAll("pub const Provider = struct {\n");
+    try writer.writeAll("    provider_type: ProviderType,\n");
+    try writer.writeAll("    interface: ProviderInterface,\n\n");
 
     try writer.writeAll("    pub fn init(provider_type: ProviderType) Provider {\n");
     try writer.writeAll("        return switch (provider_type) {\n");
     inline for (std.meta.fields(Providers)) |provider_field| {
-        try writer.print("            .{s} => .{{ .{s} = @import(\"providers/{s}.zig\").init() }},\n", .{ provider_field.name, provider_field.name, provider_field.name });
+        try writer.print("            .{s} => .{{ .provider_type = .{s}, .interface = @import(\"providers/{s}.zig\").getInterface() }},\n", .{ provider_field.name, provider_field.name, provider_field.name });
     }
     try writer.writeAll("        };\n");
     try writer.writeAll("    }\n\n");
 
     try writer.writeAll("    pub fn getBaseUrl(self: Provider) []const u8 {\n");
-    try writer.writeAll("        return switch (self) {\n");
-    inline for (std.meta.fields(Providers)) |provider_field| {
-        try writer.print("            .{s} => |p| p.base_url,\n", .{provider_field.name});
-    }
-    try writer.writeAll("        };\n");
+    try writer.writeAll("        return self.interface.base_url;\n");
     try writer.writeAll("    }\n\n");
 
     try writer.writeAll("    pub fn getApiKeyEnvVar(self: Provider) []const u8 {\n");
-    try writer.writeAll("        return switch (self) {\n");
-    inline for (std.meta.fields(Providers)) |provider_field| {
-        try writer.print("            .{s} => |p| p.api_key_env_var,\n", .{provider_field.name});
-    }
-    try writer.writeAll("        };\n");
+    try writer.writeAll("        return self.interface.api_key_env_var;\n");
     try writer.writeAll("    }\n\n");
 
     try writer.writeAll("    pub fn getModelsEndpoint(self: Provider) []const u8 {\n");
-    try writer.writeAll("        return switch (self) {\n");
-    inline for (std.meta.fields(Providers)) |provider_field| {
-        try writer.print("            .{s} => |p| p.models_endpoint,\n", .{provider_field.name});
-    }
-    try writer.writeAll("        };\n");
+    try writer.writeAll("        return self.interface.models_endpoint;\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    pub fn getModelInfo(self: Provider, model_name: []const u8) ?ModelInfo {\n");
+    try writer.writeAll("        return self.interface.getModelInfo(model_name);\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    pub fn modelToString(self: Provider, model: anytype) []const u8 {\n");
+    try writer.writeAll("        return self.interface.modelToString(model);\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    pub fn modelFromString(self: Provider, model_name: []const u8) ?anytype {\n");
+    try writer.writeAll("        return self.interface.modelFromString(model_name);\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    pub fn listModels(self: Provider) []const ModelInfo {\n");
+    try writer.writeAll("        return self.interface.listModels();\n");
     try writer.writeAll("    }\n");
 
     try writer.writeAll("};\n");
@@ -152,46 +164,73 @@ fn generateProviderFile(allocator: std.mem.Allocator, provider: Providers) !void
     try writer.writeAll("const providers = @import(\"../providers.zig\");\n\n");
 
     try writer.print("pub const {s} = struct {{\n", .{@tagName(provider)});
-    try writer.print("    base_url: []const u8 = \"{s}\",\n", .{info.base_url});
-    try writer.print("    api_key_env_var: []const u8 = \"{s}\",\n", .{info.api_key_env_var});
-    try writer.print("    models_endpoint: []const u8 = \"{s}\",\n\n", .{info.models_endpoint});
-
     try writer.writeAll("    pub const Model = enum {\n");
     for (models) |model| {
         try writer.print("        {s},\n", .{model.name});
     }
     try writer.writeAll("    };\n\n");
 
-    try writer.writeAll("    pub const ModelData = struct {\n");
+    try writer.writeAll("    const ModelData = struct {\n");
     try writer.writeAll("        display_name: []const u8,\n");
     try writer.writeAll("        id: []const u8,\n");
     try writer.writeAll("        type: providers.ModelType,\n");
     try writer.writeAll("    };\n\n");
 
-    try writer.writeAll("    pub const model_data = std.ComptimeStringMap(ModelData, .{\n");
+    try writer.writeAll("    const model_data = std.ComptimeStringMap(ModelData, .{\n");
     for (models) |model| {
         try writer.print("        .{{ .{s} = .{{ .display_name = \"{s}\", .id = \"{s}\", .type = .{s} }} }},\n", .{ model.name, model.display_name, model.id, @tagName(model.type) });
     }
     try writer.writeAll("    });\n\n");
 
-    try writer.writeAll("    pub fn init() @This() {\n");
-    try writer.writeAll("        return .{};\n");
+    try writer.writeAll("    pub fn getInterface() providers.ProviderInterface {\n");
+    try writer.print("        return .{{\n", .{});
+    try writer.print("            .base_url = \"{s}\",\n", .{info.base_url});
+    try writer.print("            .api_key_env_var = \"{s}\",\n", .{info.api_key_env_var});
+    try writer.print("            .models_endpoint = \"{s}\",\n", .{info.models_endpoint});
+    try writer.writeAll("            .getModelInfo = getModelInfo,\n");
+    try writer.writeAll("            .modelToString = modelToString,\n");
+    try writer.writeAll("            .modelFromString = modelFromString,\n");
+    try writer.writeAll("            .listModels = listModels,\n");
+    try writer.writeAll("        };\n");
     try writer.writeAll("    }\n\n");
 
-    try writer.writeAll("    pub fn modelToString(model: Model) []const u8 {\n");
+    try writer.writeAll("    fn getModelInfo(model_name: []const u8) ?providers.ModelInfo {\n");
+    try writer.writeAll("        if (modelFromString(model_name)) |model| {\n");
+    try writer.writeAll("            const data = model_data.get(@tagName(model)).?;\n");
+    try writer.writeAll("            return providers.ModelInfo{\n");
+    try writer.writeAll("                .display_name = data.display_name,\n");
+    try writer.writeAll("                .name = @tagName(model),\n");
+    try writer.writeAll("                .id = data.id,\n");
+    try writer.writeAll("                .type = data.type,\n");
+    try writer.writeAll("            };\n");
+    try writer.writeAll("        }\n");
+    try writer.writeAll("        return null;\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    fn modelToString(model: Model) []const u8 {\n");
     try writer.writeAll("        return @tagName(model);\n");
     try writer.writeAll("    }\n\n");
 
-    try writer.writeAll("    pub fn modelFromString(model_name: []const u8) ?Model {\n");
+    try writer.writeAll("    fn modelFromString(model_name: []const u8) ?Model {\n");
     try writer.writeAll("        return std.meta.stringToEnum(Model, model_name);\n");
     try writer.writeAll("    }\n\n");
 
-    try writer.writeAll("    pub fn getModelInfo(model: Model) ModelData {\n");
-    try writer.writeAll("        return model_data.get(modelToString(model)) orelse unreachable;\n");
-    try writer.writeAll("    }\n\n");
-
-    try writer.writeAll("    pub fn modelGetType(model: Model) providers.ModelType {\n");
-    try writer.writeAll("        return getModelInfo(model).type;\n");
+    try writer.writeAll("    fn listModels() []const providers.ModelInfo {\n");
+    try writer.writeAll("        comptime {\n");
+    try writer.writeAll("            var models: [model_data.count]providers.ModelInfo = undefined;\n");
+    try writer.writeAll("            var i: usize = 0;\n");
+    try writer.writeAll("            for (std.enums.values(Model)) |model| {\n");
+    try writer.writeAll("                const data = model_data.get(@tagName(model)).?;\n");
+    try writer.writeAll("                models[i] = .{\n");
+    try writer.writeAll("                    .display_name = data.display_name,\n");
+    try writer.writeAll("                    .name = @tagName(model),\n");
+    try writer.writeAll("                    .id = data.id,\n");
+    try writer.writeAll("                    .type = data.type,\n");
+    try writer.writeAll("                };\n");
+    try writer.writeAll("                i += 1;\n");
+    try writer.writeAll("            }\n");
+    try writer.writeAll("            return &models;\n");
+    try writer.writeAll("        }\n");
     try writer.writeAll("    }\n");
 
     try writer.writeAll("};\n");
