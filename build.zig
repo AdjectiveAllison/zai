@@ -56,4 +56,16 @@ pub fn build(b: *std.Build) void {
     const build_embeddings = b.addInstallArtifact(embeddings, .{});
     const build_embeddings_step = b.step("embeddings", "build the embeddings example.");
     build_embeddings_step.dependOn(&build_embeddings.step);
+
+    const vector_store = b.addExecutable(.{
+        .name = "vector_store",
+        .root_source_file = b.path("examples/vector_store.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    vector_store.root_module.addImport("zai", zai_mod);
+    const build_vector_store = b.addInstallArtifact(vector_store, .{});
+    const build_vector_store_step = b.step("vector_store", "Build the vector store example.");
+    build_vector_store_step.dependOn(&build_vector_store.step);
 }
