@@ -389,13 +389,6 @@ fn setExtraHeaders(self: *AI) !void {
     try self.extra_headers.append(.{ .name = "Accept", .value = "*/*" });
 }
 
-// TODO: Do something with role later on potentially.
-const Role = union(enum) {
-    system: "system",
-    assistant: "assistant",
-    user: "user",
-};
-
 const Usage = struct {
     prompt_tokens: u64,
     completion_tokens: ?u64,
@@ -411,7 +404,7 @@ const ChatCompletionResponse = struct {
     created: u64,
     model: []const u8,
     choices: []Choice,
-    // Usage is not returned by the Completion endpoint when streamed.
+    // Usage is not returned by the Completion endpoint when streamed. this is why it's marked as optional(for easier deserializaiton)
     usage: ?Usage = null,
 };
 
