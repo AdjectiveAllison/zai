@@ -56,4 +56,6 @@ pub fn build(b: *std.Build) void {
     const build_embeddings = b.addInstallArtifact(embeddings, .{});
     const build_embeddings_step = b.step("embeddings", "build the embeddings example.");
     build_embeddings_step.dependOn(&build_embeddings.step);
+
+    // TODO: add tests
 }
