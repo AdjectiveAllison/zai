@@ -35,6 +35,7 @@ pub const ChatCompletionStream = struct {
     },
 };
 
+// TODO: This isn't being used anywhere, why was it here? Why did we have it?
 const ChatCompletionStreamPartialReturn = struct {
     id: []const u8,
     created: u64,
@@ -57,34 +58,4 @@ pub const CompletionPayload = struct {
     frequency_penalty: ?f16 = null,
     presence_penalty: ?f16 = null,
     stream: bool = false,
-};
-
-// base url options:
-// openAI: https://api.openai.com/v1
-// Together: https://api.together.xyz/v1
-// Octo: https://text.octoai.run/v1
-// TODO: Change to tagged union with individual provider types?
-pub const Provider = enum {
-    OpenAI,
-    TogetherAI,
-    OctoAI,
-    OpenRouter,
-
-    pub fn getBaseUrl(self: Provider) []const u8 {
-        return switch (self) {
-            .OpenAI => "https://api.openai.com/v1",
-            .TogetherAI => "https://api.together.xyz/v1",
-            .OctoAI => "https://text.octoai.run/v1",
-            .OpenRouter => "https://openrouter.ai/api/v1",
-        };
-    }
-
-    pub fn getKeyVar(self: Provider) []const u8 {
-        return switch (self) {
-            .OpenAI => "OPENAI_API_KEY",
-            .TogetherAI => "TOGETHER_API_KEY",
-            .OctoAI => "OCTO_API_KEY",
-            .OpenRouter => "OPENROUTER_API_KEY",
-        };
-    }
 };
