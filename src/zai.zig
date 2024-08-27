@@ -3,11 +3,10 @@ pub const AI = @import("AI.zig");
 pub const ChatCompletion = @import("ChatCompletion.zig");
 pub const Embeddings = @import("Embeddings.zig");
 pub const StreamHandler = @import("shared.zig").StreamHandler;
-pub const Providers = @import("providers.zig");
-pub const Provider = Providers.Provider;
+pub const providers = @import("providers.zig");
+pub const Provider = providers.Provider;
 pub const Message = @import("shared.zig").Message;
 pub const CompletionPayload = @import("shared.zig").CompletionPayload;
-
 //TODO: Handle organization in relevant cases(OpenAI)
 // If ogranization is passed, it's simply a header to openAI:
 //"OpenAI-Organization: YOUR_ORG_ID"
