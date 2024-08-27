@@ -114,15 +114,6 @@ pub const Message = struct {
     content: []const u8,
 };
 
-pub const StreamCallback = struct {
-    context: *anyopaque,
-    writeFn: *const fn (context: *anyopaque, bytes: []const u8) anyerror!usize,
-
-    pub fn write(self: *StreamCallback, bytes: []const u8) !usize {
-        return self.writeFn(self.context, bytes);
-    }
-};
-
 pub const Provider = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
