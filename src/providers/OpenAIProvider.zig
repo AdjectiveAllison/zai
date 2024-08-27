@@ -509,10 +509,190 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 }
 
 fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWriter) Provider.Error!void {
-    _ = ctx;
-    _ = options;
-    _ = writer;
-    @panic("Not implemented"); // Stub
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    var client = std.http.Client{ .allocator = self.allocator };
+    defer client.deinit();
+
+    var response_header_buffer: [2048]u8 = undefined;
+
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.config.base_url}) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
+    defer self.allocator.free(uri_string);
+
+    const uri = std.Uri.parse(uri_string) catch {
+        return Provider.Error.InvalidRequest;
+    };
+
+    // Prepare the request payload
+    const payload = .{
+        .model = options.model,
+        .messages = options.messages,
+        .max_tokens = options.max_tokens,
+        .temperature = options.temperature,
+        .top_p = options.top_p,
+        .n = options.n,
+        .stream = true, // Enable streaming
+        .stop = options.stop,
+        .presence_penalty = options.presence_penalty,
+        .frequency_penalty = options.frequency_penalty,
+        .user = options.user,
+    };
+
+    const body = std.json.stringifyAlloc(self.allocator, payload, .{
+        .whitespace = .minified,
+        .emit_null_optional_fields = false,
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
+    defer self.allocator.free(body);
+
+    const headers = std.http.Client.Request.Headers{
+        .content_type = .{ .override = "application/json" },
+        .authorization = .{ .override = self.authorization_header },
+    };
+
+    var req = client.open(.POST, uri, .{
+        .server_header_buffer = &response_header_buffer,
+        .headers = headers,
+        .extra_headers = self.extra_headers.items,
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    defer req.deinit();
+
+    req.transfer_encoding = .chunked;
+
+    req.send() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.writer().writeAll(body) catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.finish() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.wait() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+
+    const status = req.response.status;
+    if (status != .ok) {
+        const error_response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => Provider.Error.OutOfMemory,
+                else => Provider.Error.UnexpectedError,
+            };
+        };
+        defer self.allocator.free(error_response);
+        std.debug.print("Error response: {s}\n", .{error_response});
+        return Provider.Error.ApiError;
+    }
+
+    var scanner = std.json.Scanner.initStreaming(self.allocator);
+    defer scanner.deinit();
+
+    var buffer: [4096]u8 = undefined;
+    var stream_buffer = std.ArrayList(u8).init(self.allocator);
+    defer stream_buffer.deinit();
+
+    while (true) {
+        const bytes_read = req.reader().read(&buffer) catch |err| {
+            return switch (err) {
+                error.ConnectionTimedOut, error.ConnectionResetByPeer => Provider.Error.NetworkError,
+                error.TlsFailure, error.TlsAlert => Provider.Error.NetworkError,
+                error.UnexpectedReadFailure => Provider.Error.UnexpectedError,
+                error.EndOfStream => break, // End of stream, exit the loop
+                error.HttpChunkInvalid, error.HttpHeadersOversize, error.DecompressionFailure, error.InvalidTrailers => Provider.Error.ApiError,
+            };
+        };
+        if (bytes_read == 0) break; // End of stream
+
+        try stream_buffer.appendSlice(buffer[0..bytes_read]);
+
+        while (true) {
+            const newline_index = std.mem.indexOfScalar(u8, stream_buffer.items, '\n') orelse break;
+            const line = stream_buffer.items[0..newline_index];
+
+            if (line.len > 0 and !std.mem.startsWith(u8, line, "data: ")) {
+                // Skip non-data lines
+                stream_buffer.replaceRange(0, newline_index + 1, &[_]u8{}) catch |err| {
+                    return switch (err) {
+                        error.OutOfMemory => Provider.Error.OutOfMemory,
+                    };
+                };
+                continue;
+            }
+
+            if (std.mem.startsWith(u8, line, "data: ")) {
+                const json_data = line["data: ".len..];
+                if (std.mem.eql(u8, json_data, "[DONE]")) {
+                    return; // End of stream
+                }
+
+                const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, json_data, .{}) catch |err| {
+                    stream_buffer.replaceRange(0, newline_index + 1, &[_]u8{}) catch |replace_err| {
+                        return switch (replace_err) {
+                            error.OutOfMemory => Provider.Error.OutOfMemory,
+                        };
+                    };
+                    if (err == error.InvalidCharacter) {
+                        // Skip invalid JSON and continue
+                        continue;
+                    }
+                    return Provider.Error.ParseError;
+                };
+                defer parsed.deinit();
+
+                if (parsed.value.object.get("choices")) |choices| {
+                    if (choices.array.items.len > 0) {
+                        if (choices.array.items[0].object.get("delta")) |delta| {
+                            if (delta.object.get("content")) |content| {
+                                switch (content) {
+                                    .string => |str| {
+                                        writer.writeAll(str) catch |err| {
+                                            return switch (err) {
+                                                error.OutOfMemory => Provider.Error.OutOfMemory,
+                                                else => Provider.Error.UnexpectedError,
+                                            };
+                                        };
+                                    },
+                                    else => {}, // Ignore non-string content
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            stream_buffer.replaceRange(0, newline_index + 1, &[_]u8{}) catch |err| {
+                return switch (err) {
+                    error.OutOfMemory => Provider.Error.OutOfMemory,
+                };
+            };
+        }
+    }
 }
 
 fn createEmbedding(ctx: *anyopaque, options: EmbeddingRequestOptions) Provider.Error![]f32 {

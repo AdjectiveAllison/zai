@@ -52,14 +52,35 @@ pub fn main() !void {
     std.debug.print("Completion response: {s}\n", .{completion_response});
 
     const streaming_completion_options = zai.providers.CompletionRequestOptions{
-        .model = "meta-llama-3.1-405b-instruct",
+        .model = "meta-llama-3.1-8b-instruct",
         .prompt = "Following this line is a long story about zig, the programming language:\n",
         .temperature = 0.7,
-        .max_tokens = 15000,
+        .max_tokens = 1500,
         .top_p = 1.0,
         .stream = true,
     };
     const stdout = std.io.getStdOut().writer();
 
     try provider.completionStream(streaming_completion_options, stdout);
+
+    const streaming_chat_options = zai.providers.ChatRequestOptions{
+        .model = "meta-llama-3.1-8b-instruct",
+        .messages = &[_]zai.providers.Message{
+            .{
+                .role = "system",
+                .content = "You are a helpful AI assistant.",
+            },
+            .{
+                .role = "user",
+                .content = "Tell me a story about a programmer who discovers a magical programming language.",
+            },
+        },
+        .temperature = 0.7,
+        .max_tokens = 1500,
+        .top_p = 1.0,
+        .stream = true,
+    };
+
+    std.debug.print("\n\nStreaming chat response:\n", .{});
+    try provider.chatStream(streaming_chat_options, stdout);
 }
