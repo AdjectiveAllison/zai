@@ -9,14 +9,14 @@ pub fn main() !void {
     const api_key = try std.process.getEnvVarOwned(allocator, "OCTOAI_TOKEN");
     defer allocator.free(api_key);
 
-    const config = zai.providers.ProviderConfig{ .OpenAI = .{
+    const provider_config = zai.ProviderConfig{ .OpenAI = .{
         .api_key = api_key,
         .base_url = "https://text.octoai.run/v1",
     } };
-    var provider = try zai.providers.Provider.init(allocator, config);
+    var provider = try zai.init(allocator, provider_config);
     defer provider.deinit();
 
-    const messages = [_]zai.providers.Message{
+    const messages = [_]zai.Message{
         .{
             .role = "system",
             .content = "You are a helpful AI assistant.",
@@ -27,9 +27,9 @@ pub fn main() !void {
         },
     };
 
-    const chat_options = zai.providers.ChatRequestOptions{
+    const chat_options = zai.ChatRequestOptions{
         .model = "meta-llama-3.1-8b-instruct",
-        .messages = messages[0..],
+        .messages = &messages,
         .temperature = 0.7,
         .top_p = 1.0,
         .stream = false,
@@ -39,7 +39,7 @@ pub fn main() !void {
     defer allocator.free(chat_response);
     std.debug.print("Chat response: {s}\n", .{chat_response});
 
-    const completion_options = zai.providers.CompletionRequestOptions{
+    const completion_options = zai.CompletionRequestOptions{
         .model = "meta-llama-3.1-8b-instruct",
         .prompt = "Hello, I'm exploring the wonderful land of",
         .temperature = 0.7,
@@ -51,7 +51,7 @@ pub fn main() !void {
     defer allocator.free(completion_response);
     std.debug.print("Completion response: {s}\n", .{completion_response});
 
-    const streaming_completion_options = zai.providers.CompletionRequestOptions{
+    const streaming_completion_options = zai.CompletionRequestOptions{
         .model = "meta-llama-3.1-8b-instruct",
         .prompt = "Following this line is a long story about zig, the programming language:\n",
         .temperature = 0.7,
@@ -63,9 +63,9 @@ pub fn main() !void {
 
     try provider.completionStream(streaming_completion_options, stdout);
 
-    const streaming_chat_options = zai.providers.ChatRequestOptions{
+    const streaming_chat_options = zai.ChatRequestOptions{
         .model = "meta-llama-3.1-8b-instruct",
-        .messages = &[_]zai.providers.Message{
+        .messages = &[_]zai.Message{
             .{
                 .role = "system",
                 .content = "You are a helpful AI assistant.",
