@@ -1,12 +1,15 @@
 const std = @import("std");
 const providers = @import("../providers.zig");
 const Provider = providers.Provider;
-const OpenAIConfig = providers.OpenAIConfig;
-const ChatRequestOptions = providers.ChatRequestOptions;
-const CompletionRequestOptions = providers.CompletionRequestOptions;
-const EmbeddingRequestOptions = providers.EmbeddingRequestOptions;
-const Message = providers.Message;
-const ModelInfo = providers.ModelInfo;
+const OpenAIConfig = @import("../config.zig").OpenAIConfig;
+const core = @import("../core.zig");
+const requests = @import("../requests.zig");
+const ChatRequestOptions = requests.ChatRequestOptions;
+const CompletionRequestOptions = requests.CompletionRequestOptions;
+const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
+const Message = core.Message;
+const models = @import("../models.zig");
+const ModelInfo = models.ModelInfo;
 
 allocator: std.mem.Allocator,
 config: OpenAIConfig,
