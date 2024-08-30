@@ -696,11 +696,130 @@ fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWr
 }
 
 fn createEmbedding(ctx: *anyopaque, options: EmbeddingRequestOptions) Provider.Error![]f32 {
-    _ = ctx;
-    _ = options;
-    @panic("Not implemented"); // Stub
-}
+    const self: *Self = @ptrCast(@alignCast(ctx));
 
+    var client = std.http.Client{ .allocator = self.allocator };
+    defer client.deinit();
+
+    var response_header_buffer: [2048]u8 = undefined;
+
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/embeddings", .{self.config.base_url}) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
+    defer self.allocator.free(uri_string);
+
+    const uri = std.Uri.parse(uri_string) catch {
+        return Provider.Error.InvalidRequest;
+    };
+
+    // Prepare the request payload
+    const payload = .{
+        .input = options.input,
+        .model = options.model,
+        .user = options.user,
+        .encoding_format = options.encoding_format,
+    };
+
+    const body = std.json.stringifyAlloc(self.allocator, payload, .{
+        .whitespace = .minified,
+        .emit_null_optional_fields = false,
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
+    defer self.allocator.free(body);
+
+    const headers = std.http.Client.Request.Headers{
+        .content_type = .{ .override = "application/json" },
+        .authorization = .{ .override = self.authorization_header },
+    };
+
+    var req = client.open(.POST, uri, .{
+        .server_header_buffer = &response_header_buffer,
+        .headers = headers,
+        .extra_headers = self.extra_headers.items,
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    defer req.deinit();
+
+    req.transfer_encoding = .chunked;
+
+    req.send() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.writer().writeAll(body) catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.finish() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.wait() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+
+    const status = req.response.status;
+    if (status != .ok) {
+        const error_response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => Provider.Error.OutOfMemory,
+                else => Provider.Error.UnexpectedError,
+            };
+        };
+        defer self.allocator.free(error_response);
+        std.debug.print("Error response: {s}\n", .{error_response});
+        return Provider.Error.ApiError;
+    }
+
+    const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    defer self.allocator.free(response);
+
+    // Parse the response
+    const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, response, .{}) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            else => Provider.Error.ParseError,
+        };
+    };
+    defer parsed.deinit();
+
+    // Extract the embedding from the response
+    const data = parsed.value.object.get("data") orelse return Provider.Error.ApiError;
+    if (data.array.items.len == 0) return Provider.Error.ApiError;
+
+    const embedding = data.array.items[0].object.get("embedding") orelse return Provider.Error.ApiError;
+    var result = try self.allocator.alloc(f32, embedding.array.items.len);
+    for (embedding.array.items, 0..) |item, i| {
+        // TODO: Why do we need to do casting here? Why does the json think we are having f64 returned? Do we need to do this better to avoid precision loss?
+        result[i] = @floatCast(item.float);
+    }
+
+    return result;
+}
 fn getModelInfo(ctx: *anyopaque, model_name: []const u8) Provider.Error!ModelInfo {
     _ = ctx;
     _ = model_name;
