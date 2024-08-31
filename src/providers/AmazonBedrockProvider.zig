@@ -10,6 +10,8 @@ const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
 const Message = core.Message;
 const models = @import("../models.zig");
 const ModelInfo = models.ModelInfo;
+const Sha256 = std.crypto.hash.sha2.Sha256;
+const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
 const Self = @This();
 
@@ -45,9 +47,18 @@ pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider
 }
 
 fn setAuthorizationHeader(self: *Self) !void {
-    // Amazon Bedrock uses AWS Signature V4 for authorization
-    // This is a placeholder and needs to be implemented properly
-    self.authorization_header = try self.allocator.dupe(u8, "AWS4-HMAC-SHA256 Credential=...");
+    const method = "POST";
+    const uri = "/model/anthropic.claude-v2/invoke";
+    const query = "";
+    const payload = "{}"; // Empty payload for now, will be replaced with actual payload in the request
+
+    var headers = std.ArrayList(std.http.Header).init(self.allocator);
+    defer headers.deinit();
+
+    try headers.append(.{ .name = "host", .value = std.Uri.parse(self.config.base_url).host orelse return error.InvalidBaseUrl });
+    try headers.append(.{ .name = "x-amz-date", .value = try self.getFormattedDate() });
+
+    self.authorization_header = try self.generateSignatureV4(method, uri, query, headers.items, payload);
 }
 
 fn setExtraHeaders(self: *Self) !void {
@@ -189,4 +200,85 @@ fn formatPrompt(self: *Self, messages: []const Message) ![]const u8 {
     try prompt.appendSlice("Assistant: ");
 
     return prompt.toOwnedSlice();
+}
+fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: []const u8, headers: []const std.http.Header, payload: []const u8) ![]const u8 {
+    const algorithm = "AWS4-HMAC-SHA256";
+    const service = "bedrock";
+    const date = try self.getFormattedDate();
+    const credential_scope = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/aws4_request", .{ date[0..8], self.config.region, service });
+    defer self.allocator.free(credential_scope);
+
+    var canonical_headers = std.ArrayList(u8).init(self.allocator);
+    defer canonical_headers.deinit();
+    var signed_headers = std.ArrayList(u8).init(self.allocator);
+    defer signed_headers.deinit();
+
+    for (headers) |header| {
+        try canonical_headers.writer().print("{s}:{s}\n", .{ std.ascii.lowerString(header.name), header.value });
+        try signed_headers.writer().print("{s};", .{std.ascii.lowerString(header.name)});
+    }
+    _ = signed_headers.pop();
+
+    const canonical_request = try std.fmt.allocPrint(self.allocator,
+        "{s}\n{s}\n{s}\n{s}\n{s}\n{x}",
+        .{
+            method,
+            uri,
+            query,
+            canonical_headers.items,
+            signed_headers.items,
+            Sha256.hash(payload, .{}),
+        }
+    );
+    defer self.allocator.free(canonical_request);
+
+    const string_to_sign = try std.fmt.allocPrint(self.allocator,
+        "{s}\n{s}\n{s}\n{x}",
+        .{
+            algorithm,
+            date,
+            credential_scope,
+            Sha256.hash(canonical_request, .{}),
+        }
+    );
+    defer self.allocator.free(string_to_sign);
+
+    const k_date = try self.hmacSha256("AWS4" ++ self.config.secret_access_key, date[0..8]);
+    const k_region = try self.hmacSha256(&k_date, self.config.region);
+    const k_service = try self.hmacSha256(&k_region, service);
+    const k_signing = try self.hmacSha256(&k_service, "aws4_request");
+
+    var signature: [32]u8 = undefined;
+    HmacSha256.create(&signature, string_to_sign, &k_signing);
+
+    return try std.fmt.allocPrint(self.allocator,
+        "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={x}",
+        .{
+            algorithm,
+            self.config.access_key_id,
+            credential_scope,
+            signed_headers.items,
+            signature,
+        }
+    );
+}
+
+fn getFormattedDate(self: *Self) ![]const u8 {
+    var buffer: [32]u8 = undefined;
+    const timestamp = std.time.timestamp();
+    const date = std.time.epoch.EpochSeconds{ .secs = @intCast(timestamp) };
+    return try std.fmt.bufPrint(&buffer, "{d:0>4}{d:0>2}{d:0>2}T{d:0>2}{d:0>2}{d:0>2}Z", .{
+        date.getYear(),
+        @as(u8, @intCast(date.getMonth())),
+        @as(u8, @intCast(date.getDay())),
+        @as(u8, @intCast(date.getHoursIntoDay())),
+        @as(u8, @intCast(date.getMinutesIntoHour())),
+        @as(u8, @intCast(date.getSecondsIntoMinute())),
+    });
+}
+
+fn hmacSha256(self: *Self, key: []const u8, data: []const u8) ![32]u8 {
+    var out: [32]u8 = undefined;
+    HmacSha256.create(&out, data, key);
+    return out;
 }
