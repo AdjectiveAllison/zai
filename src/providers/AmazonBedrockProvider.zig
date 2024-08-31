@@ -175,15 +175,17 @@ fn getModels(ctx: *anyopaque) Provider.Error![]const ModelInfo {
 
 fn formatPrompt(self: *Self, messages: []const Message) ![]const u8 {
     var prompt = std.ArrayList(u8).init(self.allocator);
-    defer prompt.deinit();
+    errdefer prompt.deinit();
 
     for (messages) |message| {
-        const role = switch (message.role) {
-            .system => "Human: ",
-            .user => "Human: ",
-            .assistant => "Assistant: ",
-            .function => unreachable, // Not supported in this implementation
-        };
+        const role = if (std.mem.eql(u8, message.role, "system") or std.mem.eql(u8, message.role, "user"))
+            "Human: "
+        else if (std.mem.eql(u8, message.role, "assistant"))
+            "Assistant: "
+        else if (std.mem.eql(u8, message.role, "function"))
+            return error.UnsupportedRole
+        else
+            return error.UnknownRole;
 
         try prompt.appendSlice(role);
         try prompt.appendSlice(message.content);
