@@ -51,5 +51,25 @@ pub fn build(b: *std.Build) void {
     const build_embeddings_step = b.step("embeddings", "build the embeddings example.");
     build_embeddings_step.dependOn(&build_embeddings.step);
 
+    // New Bedrock chat example
+    const bedrock_chat = b.addExecutable(.{
+        .name = "bedrock_chat",
+        .root_source_file = b.path("examples/chat_bedrock.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    bedrock_chat.root_module.addImport("zai", zai_mod);
+    const build_bedrock_chat = b.addInstallArtifact(bedrock_chat, .{});
+
+    const run_bedrock_chat = b.addRunArtifact(bedrock_chat);
+    if (b.args) |args| {
+        run_bedrock_chat.addArgs(args);
+    }
+
+    const bedrock_step = b.step("bedrock", "Build and run the Amazon Bedrock chat example");
+    bedrock_step.dependOn(&build_bedrock_chat.step);
+    bedrock_step.dependOn(&run_bedrock_chat.step);
+
     // TODO: add tests
 }
