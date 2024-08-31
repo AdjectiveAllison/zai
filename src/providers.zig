@@ -4,6 +4,7 @@ const core = @import("core.zig");
 const requests = @import("requests.zig");
 const models = @import("models.zig");
 const OpenAIProvider = @import("providers/OpenAIProvider.zig");
+const AmazonBedrockProvider = @import("providers/AmazonBedrockProvider.zig");
 
 pub const Provider = struct {
     ptr: *anyopaque,
@@ -27,7 +28,7 @@ pub const Provider = struct {
             .OpenAI => |openai_config| OpenAIProvider.init(allocator, openai_config),
             .Anthropic => @panic("Anthropic provider not implemented"),
             .GoogleVertex => @panic("Google Vertex provider not implemented"),
-            .AmazonBedrock => @panic("Amazon Bedrock provider not implemented"),
+            .AmazonBedrock => |bedrock_config| AmazonBedrockProvider.init(allocator, bedrock_config),
         };
     }
 
