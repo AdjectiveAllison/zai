@@ -29,6 +29,7 @@ pub const AmazonBedrockConfig = struct {
     access_key_id: []const u8,
     secret_access_key: []const u8,
     region: []const u8,
+    base_url: []const u8,
 };
 
 pub const ConfigManager = struct {
