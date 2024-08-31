@@ -14,11 +14,14 @@ pub fn main() !void {
     const region = try std.process.getEnvVarOwned(allocator, "AWS_REGION");
     defer allocator.free(region);
 
+    const base_url = try std.fmt.allocPrint(allocator, "https://bedrock-runtime.{s}.amazonaws.com", .{region});
+    defer allocator.free(base_url);
+
     const provider_config = zai.ProviderConfig{ .AmazonBedrock = .{
         .access_key_id = access_key_id,
         .secret_access_key = secret_access_key,
         .region = region,
-        .base_url = try std.fmt.allocPrint(allocator, "https://bedrock-runtime.{s}.amazonaws.com", .{region}),
+        .base_url = base_url,
     } };
     var provider = try zai.init(allocator, provider_config);
     defer provider.deinit();
