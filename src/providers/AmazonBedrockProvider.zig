@@ -183,9 +183,9 @@ fn formatPrompt(self: *Self, messages: []const Message) ![]const u8 {
         else if (std.mem.eql(u8, message.role, "assistant"))
             "Assistant: "
         else if (std.mem.eql(u8, message.role, "function"))
-            return error.UnsupportedRole
+            return error.InvalidRequest
         else
-            return error.UnknownRole;
+            return error.InvalidRequest;
 
         try prompt.appendSlice(role);
         try prompt.appendSlice(message.content);
