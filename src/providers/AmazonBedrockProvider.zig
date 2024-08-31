@@ -17,7 +17,6 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 config: AmazonBedrockConfig,
-authorization_header: []const u8,
 extra_headers: std.ArrayList(std.http.Header),
 
 pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider {
@@ -28,7 +27,6 @@ pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider
     self.config = config;
     self.extra_headers = std.ArrayList(std.http.Header).init(allocator);
 
-    try self.setAuthorizationHeader();
     try self.setExtraHeaders();
 
     return .{
@@ -46,28 +44,12 @@ pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider
     };
 }
 
-fn setAuthorizationHeader(self: *Self) !void {
-    const method = "POST";
-    const uri = "/model/anthropic.claude-v2/invoke";
-    const query = "";
-    const payload = "{}"; // Empty payload for now, will be replaced with actual payload in the request
-
-    var headers = std.ArrayList(std.http.Header).init(self.allocator);
-    defer headers.deinit();
-
-    try headers.append(.{ .name = "host", .value = std.Uri.parse(self.config.base_url).host orelse return error.InvalidBaseUrl });
-    try headers.append(.{ .name = "x-amz-date", .value = try self.getFormattedDate() });
-
-    self.authorization_header = try self.generateSignatureV4(method, uri, query, headers.items, payload);
-}
-
 fn setExtraHeaders(self: *Self) !void {
     try self.extra_headers.append(.{ .name = "Content-Type", .value = "application/json" });
 }
 
 fn deinit(ctx: *anyopaque) void {
     const self: *Self = @ptrCast(@alignCast(ctx));
-    self.allocator.free(self.authorization_header);
     self.extra_headers.deinit();
     self.allocator.destroy(self);
 }
@@ -119,11 +101,26 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     });
     defer self.allocator.free(body);
 
+    // Generate authorization header
+    const method = "POST";
+    const uri_path = try std.fmt.allocPrint(self.allocator, "/model/{s}/invoke", .{options.model});
+    defer self.allocator.free(uri_path);
+    const query = "";
+
+    var headers = std.ArrayList(std.http.Header).init(self.allocator);
+    defer headers.deinit();
+
+    try headers.append(.{ .name = "host", .value = std.Uri.parse(self.config.base_url).host orelse return Provider.Error.InvalidRequest });
+    try headers.append(.{ .name = "x-amz-date", .value = try self.getFormattedDate() });
+
+    const authorization_header = try self.generateSignatureV4(method, uri_path, query, headers.items, body);
+    defer self.allocator.free(authorization_header);
+
     var req = try client.request(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
         .headers = .{
             .content_type = .{ .override = "application/json" },
-            .authorization = .{ .override = self.authorization_header },
+            .authorization = .{ .override = authorization_header },
         },
         .extra_headers = self.extra_headers.items,
     });
