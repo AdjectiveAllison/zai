@@ -75,7 +75,11 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = try std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{ self.config.base_url, options.model });
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{ self.config.base_url, options.model }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
     defer self.allocator.free(uri_string);
 
     const uri = std.Uri.parse(uri_string) catch {
@@ -91,62 +95,141 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         .stop_sequences = options.stop orelse &[_][]const u8{},
     };
 
-    const body = try std.json.stringifyAlloc(self.allocator, payload, .{
+    const body = std.json.stringifyAlloc(self.allocator, payload, .{
         .whitespace = .minified,
         .emit_null_optional_fields = false,
-    });
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
     defer self.allocator.free(body);
 
     // Generate authorization header
     const method = "POST";
-    const uri_path = try std.fmt.allocPrint(self.allocator, "/model/{s}/invoke", .{options.model});
+    const uri_path = std.fmt.allocPrint(self.allocator, "/model/{s}/invoke", .{options.model}) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
     defer self.allocator.free(uri_path);
     const query = "";
 
     var headers = std.ArrayList(std.http.Header).init(self.allocator);
     defer headers.deinit();
 
-    try headers.append(.{ .name = "host", .value = std.Uri.parse(self.config.base_url).host orelse return Provider.Error.InvalidRequest });
-    try headers.append(.{ .name = "x-amz-date", .value = try self.getFormattedDate() });
+    // Parse the base URL to get the host
+    const base_uri = std.Uri.parse(self.config.base_url) catch {
+        return Provider.Error.InvalidRequest;
+    };
+    const host = if (base_uri.host) |h| switch (h) {
+        .raw, .percent_encoded => |value| value,
+    } else return Provider.Error.InvalidRequest;
 
-    const authorization_header = try self.generateSignatureV4(method, uri_path, query, headers.items, body);
+    headers.append(.{ .name = "host", .value = host }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
+    const formatted_date = self.getFormattedDate() catch |err| {
+        return switch (err) {
+            error.NoSpaceLeft => Provider.Error.OutOfMemory,
+        };
+    };
+    headers.append(.{ .name = "x-amz-date", .value = formatted_date }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
+
+    const authorization_header = self.generateSignatureV4(method, uri_path, query, headers.items, body) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.NoSpaceLeft => Provider.Error.OutOfMemory,
+        };
+    };
     defer self.allocator.free(authorization_header);
 
-    var req = try client.request(.POST, uri, .{
+    var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
         .headers = .{
             .content_type = .{ .override = "application/json" },
             .authorization = .{ .override = authorization_header },
         },
         .extra_headers = self.extra_headers.items,
-    });
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
     defer req.deinit();
 
     req.transfer_encoding = .chunked;
 
-    try req.start();
-    try req.writeAll(body);
-    try req.finish();
-    try req.wait();
+    req.send() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.writer().writeAll(body) catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.finish() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.wait() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
 
     const status = req.response.status;
     if (status != .ok) {
-        const error_response = try req.reader().readAllAlloc(self.allocator, 3276800);
+        const error_response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => Provider.Error.OutOfMemory,
+                else => Provider.Error.UnexpectedError,
+            };
+        };
         defer self.allocator.free(error_response);
         std.debug.print("Error response: {s}\n", .{error_response});
         return Provider.Error.ApiError;
     }
 
-    const response = try req.reader().readAllAlloc(self.allocator, 3276800);
+    const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
     defer self.allocator.free(response);
 
     // Parse the response
-    const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, response, .{});
+    const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, response, .{}) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            else => Provider.Error.ParseError,
+        };
+    };
     defer parsed.deinit();
 
     // Extract the content from the response
     const completion_content = parsed.value.object.get("completion") orelse return Provider.Error.ApiError;
-    return try self.allocator.dupe(u8, completion_content.string);
+    return self.allocator.dupe(u8, completion_content.string) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
 }
 
 fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWriter) Provider.Error!void {
@@ -196,6 +279,7 @@ fn formatPrompt(self: *Self, messages: []const Message) ![]const u8 {
 
     return prompt.toOwnedSlice();
 }
+
 fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: []const u8, headers: []const std.http.Header, payload: []const u8) ![]const u8 {
     const algorithm = "AWS4-HMAC-SHA256";
     const service = "bedrock";
@@ -209,10 +293,15 @@ fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: 
     defer signed_headers.deinit();
 
     for (headers) |header| {
-        try canonical_headers.writer().print("{s}:{s}\n", .{ std.ascii.lowerString(header.name), header.value });
-        try signed_headers.writer().print("{s};", .{std.ascii.lowerString(header.name)});
+        var lower_name: [256]u8 = undefined; // Adjust size as needed
+        const lowered = std.ascii.lowerString(&lower_name, header.name);
+        try canonical_headers.writer().print("{s}:{s}\n", .{ lowered, header.value });
+        try signed_headers.writer().print("{s};", .{lowered});
     }
     _ = signed_headers.pop();
+
+    var payload_hash: [Sha256.digest_length]u8 = undefined;
+    Sha256.hash(payload, &payload_hash, .{});
 
     const canonical_request = try std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{s}\n{s}\n{x}", .{
         method,
@@ -220,19 +309,25 @@ fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: 
         query,
         canonical_headers.items,
         signed_headers.items,
-        Sha256.hash(payload, .{}),
+        payload_hash,
     });
     defer self.allocator.free(canonical_request);
+
+    var canonical_request_hash: [Sha256.digest_length]u8 = undefined;
+    Sha256.hash(canonical_request, &canonical_request_hash, .{});
 
     const string_to_sign = try std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{x}", .{
         algorithm,
         date,
         credential_scope,
-        Sha256.hash(canonical_request, .{}),
+        canonical_request_hash,
     });
     defer self.allocator.free(string_to_sign);
 
-    const k_date = try self.hmacSha256("AWS4" ++ self.config.secret_access_key, date[0..8]);
+    const aws4_key = try std.fmt.allocPrint(self.allocator, "AWS4{s}", .{self.config.secret_access_key});
+    defer self.allocator.free(aws4_key);
+
+    const k_date = try self.hmacSha256(aws4_key, date[0..8]);
     const k_region = try self.hmacSha256(&k_date, self.config.region);
     const k_service = try self.hmacSha256(&k_region, service);
     const k_signing = try self.hmacSha256(&k_service, "aws4_request");
@@ -249,21 +344,29 @@ fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: 
     });
 }
 
-fn getFormattedDate() ![]const u8 {
+fn getFormattedDate(self: *Self) ![]const u8 {
+    _ = self; // self is unused but kept for consistency
     var buffer: [32]u8 = undefined;
     const timestamp = std.time.timestamp();
-    const date = std.time.epoch.EpochSeconds{ .secs = @intCast(timestamp) };
+    const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(timestamp) };
+    const epoch_day = epoch_seconds.getEpochDay();
+    const day_seconds = epoch_seconds.getDaySeconds();
+
+    const year_day = epoch_day.calculateYearDay();
+    const month_day = year_day.calculateMonthDay();
+
     return try std.fmt.bufPrint(&buffer, "{d:0>4}{d:0>2}{d:0>2}T{d:0>2}{d:0>2}{d:0>2}Z", .{
-        date.getYear(),
-        @as(u8, @intCast(date.getMonth())),
-        @as(u8, @intCast(date.getDay())),
-        @as(u8, @intCast(date.getHoursIntoDay())),
-        @as(u8, @intCast(date.getMinutesIntoHour())),
-        @as(u8, @intCast(date.getSecondsIntoMinute())),
+        year_day.year,
+        month_day.month.numeric(),
+        month_day.day_index + 1,
+        day_seconds.getHoursIntoDay(),
+        day_seconds.getMinutesIntoHour(),
+        day_seconds.getSecondsIntoMinute(),
     });
 }
 
-fn hmacSha256(key: []const u8, data: []const u8) ![32]u8 {
+fn hmacSha256(self: *Self, key: []const u8, data: []const u8) ![32]u8 {
+    _ = self;
     var out: [32]u8 = undefined;
     HmacSha256.create(&out, data, key);
     return out;
