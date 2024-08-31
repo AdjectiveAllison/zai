@@ -7,6 +7,8 @@ pub const ZaiError = error{
     NetworkError,
     ParseError,
     UnexpectedError,
+    UnsupportedRole,
+    UnknownRole,
     // Add more error types as needed
 };
 
