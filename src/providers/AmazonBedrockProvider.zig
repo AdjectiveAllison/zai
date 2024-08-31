@@ -75,11 +75,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = try std.fmt.allocPrint(
-        self.allocator,
-        "{s}/model/{s}/invoke",
-        .{ self.config.base_url, options.model }
-    );
+    const uri_string = try std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{ self.config.base_url, options.model });
     defer self.allocator.free(uri_string);
 
     const uri = std.Uri.parse(uri_string) catch {
@@ -149,8 +145,8 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     defer parsed.deinit();
 
     // Extract the content from the response
-    const completion = parsed.value.object.get("completion") orelse return Provider.Error.ApiError;
-    return try self.allocator.dupe(u8, completion.string);
+    const completion_content = parsed.value.object.get("completion") orelse return Provider.Error.ApiError;
+    return try self.allocator.dupe(u8, completion_content.string);
 }
 
 fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWriter) Provider.Error!void {
@@ -216,28 +212,22 @@ fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: 
     }
     _ = signed_headers.pop();
 
-    const canonical_request = try std.fmt.allocPrint(self.allocator,
-        "{s}\n{s}\n{s}\n{s}\n{s}\n{x}",
-        .{
-            method,
-            uri,
-            query,
-            canonical_headers.items,
-            signed_headers.items,
-            Sha256.hash(payload, .{}),
-        }
-    );
+    const canonical_request = try std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{s}\n{s}\n{x}", .{
+        method,
+        uri,
+        query,
+        canonical_headers.items,
+        signed_headers.items,
+        Sha256.hash(payload, .{}),
+    });
     defer self.allocator.free(canonical_request);
 
-    const string_to_sign = try std.fmt.allocPrint(self.allocator,
-        "{s}\n{s}\n{s}\n{x}",
-        .{
-            algorithm,
-            date,
-            credential_scope,
-            Sha256.hash(canonical_request, .{}),
-        }
-    );
+    const string_to_sign = try std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{x}", .{
+        algorithm,
+        date,
+        credential_scope,
+        Sha256.hash(canonical_request, .{}),
+    });
     defer self.allocator.free(string_to_sign);
 
     const k_date = try self.hmacSha256("AWS4" ++ self.config.secret_access_key, date[0..8]);
@@ -248,19 +238,16 @@ fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: 
     var signature: [32]u8 = undefined;
     HmacSha256.create(&signature, string_to_sign, &k_signing);
 
-    return try std.fmt.allocPrint(self.allocator,
-        "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={x}",
-        .{
-            algorithm,
-            self.config.access_key_id,
-            credential_scope,
-            signed_headers.items,
-            signature,
-        }
-    );
+    return try std.fmt.allocPrint(self.allocator, "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={x}", .{
+        algorithm,
+        self.config.access_key_id,
+        credential_scope,
+        signed_headers.items,
+        signature,
+    });
 }
 
-fn getFormattedDate(self: *Self) ![]const u8 {
+fn getFormattedDate() ![]const u8 {
     var buffer: [32]u8 = undefined;
     const timestamp = std.time.timestamp();
     const date = std.time.epoch.EpochSeconds{ .secs = @intCast(timestamp) };
@@ -274,7 +261,7 @@ fn getFormattedDate(self: *Self) ![]const u8 {
     });
 }
 
-fn hmacSha256(self: *Self, key: []const u8, data: []const u8) ![32]u8 {
+fn hmacSha256(key: []const u8, data: []const u8) ![32]u8 {
     var out: [32]u8 = undefined;
     HmacSha256.create(&out, data, key);
     return out;
