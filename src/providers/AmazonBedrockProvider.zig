@@ -80,16 +80,26 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         return Provider.Error.InvalidRequest;
     };
 
-    // Prepare the request payload
+    const amazon_messages = convertMessagesToAmazonFormat(self.allocator, options.messages) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+        };
+    };
+    defer {
+        for (amazon_messages) |msg| {
+            self.allocator.free(msg.content);
+        }
+        self.allocator.free(amazon_messages);
+    }
+
     const payload = .{
-        .messages = options.messages,
+        .messages = amazon_messages,
         .inferenceConfig = .{
             .maxTokens = options.max_tokens,
             .temperature = options.temperature,
             .topP = options.top_p,
-            .stopSequences = options.stop,
+            .stream = options.stream,
         },
-        .stream = false,
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
@@ -103,6 +113,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     defer self.allocator.free(body);
 
     const date = try self.getFormattedDate();
+    defer self.allocator.free(date);
 
     // Convert uri.path to []const u8
     const path = switch (uri.path) {
@@ -112,6 +123,11 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     const auth_header = try self.generateSignatureV4("POST", path, "", &[_]std.http.Header{.{ .name = "Content-Type", .value = "application/json" }}, body);
     defer self.allocator.free(auth_header);
+
+    std.debug.print("Request payload: {s}\n", .{body});
+    std.debug.print("Authorization header: {s}\n", .{auth_header});
+    std.debug.print("X-Amz-Date header: {s}\n", .{date});
+    std.debug.print("Request URL: {s}\n", .{uri_string});
 
     var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
@@ -226,27 +242,26 @@ fn getModels(ctx: *anyopaque) Provider.Error![]const ModelInfo {
     @panic("Not implemented for Amazon Bedrock"); // Stub
 }
 
-fn getFormattedDate(self: *Self) Provider.Error![]const u8 {
-    _ = self; // self is unused but kept for consistency
-    var buffer: [32]u8 = undefined;
-    const timestamp = std.time.timestamp();
-    const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(timestamp) };
-    const epoch_day = epoch_seconds.getEpochDay();
-    const day_seconds = epoch_seconds.getDaySeconds();
+fn getFormattedDate(self: *Self) ![]const u8 {
+    // Get the current timestamp
+    const now = std.time.timestamp();
 
+    // Convert to UTC
+    const utc = std.time.epoch.EpochSeconds{ .secs = @intCast(now) };
+    const epoch_day = utc.getEpochDay();
     const year_day = epoch_day.calculateYearDay();
     const month_day = year_day.calculateMonthDay();
+    const day_seconds = utc.getDaySeconds();
 
-    return std.fmt.bufPrint(&buffer, "{d:0>4}{d:0>2}{d:0>2}T{d:0>2}{d:0>2}{d:0>2}Z", .{
+    // Format the date string
+    return try std.fmt.allocPrint(self.allocator, "{d:0>4}{d:0>2}{d:0>2}T{d:0>2}{d:0>2}{d:0>2}Z", .{
         year_day.year,
         month_day.month.numeric(),
         month_day.day_index + 1,
         day_seconds.getHoursIntoDay(),
         day_seconds.getMinutesIntoHour(),
         day_seconds.getSecondsIntoMinute(),
-    }) catch |err| switch (err) {
-        error.NoSpaceLeft => return Provider.Error.UnexpectedError,
-    };
+    });
 }
 
 fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: []const u8, headers: []const std.http.Header, payload: []const u8) Provider.Error![]const u8 {
@@ -346,4 +361,31 @@ fn hmacSha256(self: *Self, key: []const u8, data: []const u8) Provider.Error![32
     var out: [32]u8 = undefined;
     HmacSha256.create(&out, data, key);
     return out;
+}
+
+const AmazonMessage = struct {
+    role: []const u8,
+    content: []const AmazonContent,
+
+    const AmazonContent = struct {
+        text: []const u8,
+    };
+};
+
+fn convertMessagesToAmazonFormat(allocator: std.mem.Allocator, messages: []const Message) ![]AmazonMessage {
+    var amazon_messages = try allocator.alloc(AmazonMessage, messages.len);
+    errdefer allocator.free(amazon_messages);
+
+    for (messages, 0..) |msg, i| {
+        const content = try allocator.alloc(AmazonMessage.AmazonContent, 1);
+        errdefer allocator.free(content);
+        content[0] = .{ .text = msg.content };
+
+        amazon_messages[i] = AmazonMessage{
+            .role = msg.role,
+            .content = content,
+        };
+    }
+
+    return amazon_messages;
 }

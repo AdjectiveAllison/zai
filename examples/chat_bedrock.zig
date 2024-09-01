@@ -28,10 +28,6 @@ pub fn main() !void {
 
     const messages = [_]zai.Message{
         .{
-            .role = "system",
-            .content = "You are a helpful AI assistant.",
-        },
-        .{
             .role = "user",
             .content = "What are the benefits of using zig for systems programming?",
         },
