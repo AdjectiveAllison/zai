@@ -115,19 +115,25 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     const date = try self.getFormattedDate();
     defer self.allocator.free(date);
 
-    // Convert uri.path to []const u8
     const path = switch (uri.path) {
         .raw => |p| p,
         .percent_encoded => |p| p,
     };
 
-    const auth_header = try self.generateSignatureV4("POST", path, "", &[_]std.http.Header{.{ .name = "Content-Type", .value = "application/json" }}, body);
+    const host = try std.fmt.allocPrint(self.allocator, "bedrock-runtime.{s}.amazonaws.com", .{self.config.region});
+    defer self.allocator.free(host);
+
+    const auth_header = try self.generateSignatureV4("POST", path, "", &[_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+        .{ .name = "X-Amz-Date", .value = date },
+    }, host, body);
     defer self.allocator.free(auth_header);
 
     std.debug.print("Request payload: {s}\n", .{body});
     std.debug.print("Authorization header: {s}\n", .{auth_header});
     std.debug.print("X-Amz-Date header: {s}\n", .{date});
     std.debug.print("Request URL: {s}\n", .{uri_string});
+    std.debug.print("Host: {s}\n", .{host});
 
     var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
@@ -135,6 +141,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
             .{ .name = "Content-Type", .value = "application/json" },
             .{ .name = "Authorization", .value = auth_header },
             .{ .name = "X-Amz-Date", .value = date },
+            .{ .name = "Host", .value = host },
         },
     }) catch |err| {
         return switch (err) {
@@ -173,6 +180,8 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     };
 
     const status = req.response.status;
+    std.debug.print("Response status: {}\n", .{status});
+
     if (status != .ok) {
         const error_response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
             return switch (err) {
@@ -192,6 +201,8 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         };
     };
     defer self.allocator.free(response);
+
+    std.debug.print("Response body: {s}\n", .{response});
 
     // Parse the response
     const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, response, .{}) catch |err| {
@@ -264,15 +275,12 @@ fn getFormattedDate(self: *Self) ![]const u8 {
     });
 }
 
-fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: []const u8, headers: []const std.http.Header, payload: []const u8) Provider.Error![]const u8 {
+fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: []const u8, headers: []const std.http.Header, host: []const u8, payload: []const u8) Provider.Error![]const u8 {
     const algorithm = "AWS4-HMAC-SHA256";
     const service = "bedrock";
     const date = try self.getFormattedDate();
-    const credential_scope = std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/aws4_request", .{ date[0..8], self.config.region, service }) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+    defer self.allocator.free(date);
+    const credential_scope = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/aws4_request", .{ date[0..8], self.config.region, service });
     defer self.allocator.free(credential_scope);
 
     var canonical_headers = std.ArrayList(u8).init(self.allocator);
@@ -280,59 +288,43 @@ fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: 
     var signed_headers = std.ArrayList(u8).init(self.allocator);
     defer signed_headers.deinit();
 
+    // Add host header
+    try canonical_headers.writer().print("host:{s}\n", .{host});
+    try signed_headers.writer().print("host;", .{});
+
     for (headers) |header| {
-        var lower_name: [256]u8 = undefined; // Adjust size as needed
+        var lower_name: [256]u8 = undefined;
         const lowered = std.ascii.lowerString(&lower_name, header.name);
-        canonical_headers.writer().print("{s}:{s}\n", .{ lowered, header.value }) catch |err| {
-            return switch (err) {
-                error.OutOfMemory => Provider.Error.OutOfMemory,
-            };
-        };
-        signed_headers.writer().print("{s};", .{lowered}) catch |err| {
-            return switch (err) {
-                error.OutOfMemory => Provider.Error.OutOfMemory,
-            };
-        };
+        try canonical_headers.writer().print("{s}:{s}\n", .{ lowered, header.value });
+        try signed_headers.writer().print("{s};", .{lowered});
     }
     _ = signed_headers.pop();
 
     var payload_hash: [Sha256.digest_length]u8 = undefined;
     Sha256.hash(payload, &payload_hash, .{});
 
-    const canonical_request = std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{s}\n{s}\n{x}", .{
+    const canonical_request = try std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{s}\n{s}\n{x}", .{
         method,
         uri,
         query,
         canonical_headers.items,
         signed_headers.items,
-        payload_hash,
-    }) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+        std.fmt.fmtSliceHexLower(&payload_hash),
+    });
     defer self.allocator.free(canonical_request);
 
     var canonical_request_hash: [Sha256.digest_length]u8 = undefined;
     Sha256.hash(canonical_request, &canonical_request_hash, .{});
 
-    const string_to_sign = std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{x}", .{
+    const string_to_sign = try std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{x}", .{
         algorithm,
         date,
         credential_scope,
-        canonical_request_hash,
-    }) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+        std.fmt.fmtSliceHexLower(&canonical_request_hash),
+    });
     defer self.allocator.free(string_to_sign);
 
-    const aws4_key = std.fmt.allocPrint(self.allocator, "AWS4{s}", .{self.config.secret_access_key}) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+    const aws4_key = try std.fmt.allocPrint(self.allocator, "AWS4{s}", .{self.config.secret_access_key});
     defer self.allocator.free(aws4_key);
 
     const k_date = try self.hmacSha256(aws4_key, date[0..8]);
@@ -348,12 +340,8 @@ fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: 
         self.config.access_key_id,
         credential_scope,
         signed_headers.items,
-        signature,
-    }) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+        std.fmt.fmtSliceHexLower(&signature),
+    });
 }
 
 fn hmacSha256(self: *Self, key: []const u8, data: []const u8) Provider.Error![32]u8 {
