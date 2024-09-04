@@ -10,13 +10,13 @@ const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
 const Message = core.Message;
 const models = @import("../models.zig");
 const ModelInfo = models.ModelInfo;
-const Sha256 = std.crypto.hash.sha2.Sha256;
-const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
+const Signer = @import("amazon/auth.zig").Signer;
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 config: AmazonBedrockConfig,
+signer: Signer,
 
 pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider {
     var self = try allocator.create(Self);
@@ -24,6 +24,7 @@ pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider
 
     self.allocator = allocator;
     self.config = config;
+    self.signer = Signer.init(allocator, config.access_key_id, config.secret_access_key, config.region);
 
     return .{
         .ptr = self,
@@ -112,36 +113,33 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     };
     defer self.allocator.free(body);
 
-    const date = try self.getFormattedDate();
-    defer self.allocator.free(date);
-
-    const path = switch (uri.path) {
-        .raw => |p| p,
-        .percent_encoded => |p| p,
-    };
-
     const host = try std.fmt.allocPrint(self.allocator, "bedrock-runtime.{s}.amazonaws.com", .{self.config.region});
     defer self.allocator.free(host);
 
-    const auth_header = try self.generateSignatureV4("POST", path, "", &[_]std.http.Header{
-        .{ .name = "Content-Type", .value = "application/json" },
-        .{ .name = "X-Amz-Date", .value = date },
-    }, host, body);
-    defer self.allocator.free(auth_header);
+    const date = try self.getFormattedDate();
+    defer self.allocator.free(date);
 
-    std.debug.print("Request payload: {s}\n", .{body});
-    std.debug.print("Authorization header: {s}\n", .{auth_header});
-    std.debug.print("X-Amz-Date header: {s}\n", .{date});
-    std.debug.print("Request URL: {s}\n", .{uri_string});
-    std.debug.print("Host: {s}\n", .{host});
+    var headers = std.StringHashMap([]const u8).init(self.allocator);
+    defer headers.deinit();
+    try headers.put("Content-Type", "application/json");
+    try headers.put("Host", host);
+    try headers.put("X-Amz-Date", date);
+
+    const auth_header = self.signer.sign("POST", uri_string, headers, body) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.UnexpectedCharacter, error.InvalidFormat, error.InvalidPort, error.MissingDateHeader => Provider.Error.InvalidRequest,
+        };
+    };
+    defer self.allocator.free(auth_header);
 
     var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
         .extra_headers = &[_]std.http.Header{
             .{ .name = "Content-Type", .value = "application/json" },
             .{ .name = "Authorization", .value = auth_header },
-            .{ .name = "X-Amz-Date", .value = date },
             .{ .name = "Host", .value = host },
+            .{ .name = "X-Amz-Date", .value = date },
         },
     }) catch |err| {
         return switch (err) {
@@ -180,7 +178,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     };
 
     const status = req.response.status;
-    std.debug.print("Response status: {}\n", .{status});
 
     if (status != .ok) {
         const error_response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
@@ -273,82 +270,6 @@ fn getFormattedDate(self: *Self) ![]const u8 {
         day_seconds.getMinutesIntoHour(),
         day_seconds.getSecondsIntoMinute(),
     });
-}
-
-fn generateSignatureV4(self: *Self, method: []const u8, uri: []const u8, query: []const u8, headers: []const std.http.Header, host: []const u8, payload: []const u8) Provider.Error![]const u8 {
-    const algorithm = "AWS4-HMAC-SHA256";
-    const service = "bedrock";
-    const date = try self.getFormattedDate();
-    defer self.allocator.free(date);
-    const credential_scope = try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/aws4_request", .{ date[0..8], self.config.region, service });
-    defer self.allocator.free(credential_scope);
-
-    var canonical_headers = std.ArrayList(u8).init(self.allocator);
-    defer canonical_headers.deinit();
-    var signed_headers = std.ArrayList(u8).init(self.allocator);
-    defer signed_headers.deinit();
-
-    // Add host header
-    try canonical_headers.writer().print("host:{s}\n", .{host});
-    try signed_headers.writer().print("host;", .{});
-
-    for (headers) |header| {
-        var lower_name: [256]u8 = undefined;
-        const lowered = std.ascii.lowerString(&lower_name, header.name);
-        try canonical_headers.writer().print("{s}:{s}\n", .{ lowered, header.value });
-        try signed_headers.writer().print("{s};", .{lowered});
-    }
-    _ = signed_headers.pop();
-
-    var payload_hash: [Sha256.digest_length]u8 = undefined;
-    Sha256.hash(payload, &payload_hash, .{});
-
-    const canonical_request = try std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{s}\n{s}\n{x}", .{
-        method,
-        uri,
-        query,
-        canonical_headers.items,
-        signed_headers.items,
-        std.fmt.fmtSliceHexLower(&payload_hash),
-    });
-    defer self.allocator.free(canonical_request);
-
-    var canonical_request_hash: [Sha256.digest_length]u8 = undefined;
-    Sha256.hash(canonical_request, &canonical_request_hash, .{});
-
-    const string_to_sign = try std.fmt.allocPrint(self.allocator, "{s}\n{s}\n{s}\n{x}", .{
-        algorithm,
-        date,
-        credential_scope,
-        std.fmt.fmtSliceHexLower(&canonical_request_hash),
-    });
-    defer self.allocator.free(string_to_sign);
-
-    const aws4_key = try std.fmt.allocPrint(self.allocator, "AWS4{s}", .{self.config.secret_access_key});
-    defer self.allocator.free(aws4_key);
-
-    const k_date = try self.hmacSha256(aws4_key, date[0..8]);
-    const k_region = try self.hmacSha256(&k_date, self.config.region);
-    const k_service = try self.hmacSha256(&k_region, service);
-    const k_signing = try self.hmacSha256(&k_service, "aws4_request");
-
-    var signature: [32]u8 = undefined;
-    HmacSha256.create(&signature, string_to_sign, &k_signing);
-
-    return std.fmt.allocPrint(self.allocator, "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={x}", .{
-        algorithm,
-        self.config.access_key_id,
-        credential_scope,
-        signed_headers.items,
-        std.fmt.fmtSliceHexLower(&signature),
-    });
-}
-
-fn hmacSha256(self: *Self, key: []const u8, data: []const u8) Provider.Error![32]u8 {
-    _ = self;
-    var out: [32]u8 = undefined;
-    HmacSha256.create(&out, data, key);
-    return out;
 }
 
 const AmazonMessage = struct {
