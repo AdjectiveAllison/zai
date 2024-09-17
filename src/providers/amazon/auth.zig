@@ -28,7 +28,9 @@ pub const Signer = struct {
         const signature = try self.calculateSignature(date[0..8], string_to_sign);
         defer self.allocator.free(signature);
 
-        return self.createAuthorizationHeader(date[0..8], signature, headers);
+        const auth_header = try self.createAuthorizationHeader(date[0..8], signature, headers);
+        std.debug.print("Authorization header: {s}\n", .{auth_header});
+        return auth_header;
     }
 
     pub fn hashSha256(self: *Signer, data: []const u8) ![]u8 {

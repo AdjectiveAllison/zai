@@ -67,19 +67,13 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
+    const uri_string = try std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{
         self.config.base_url,
         options.model,
-    }) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+    });
     defer self.allocator.free(uri_string);
 
-    const uri = std.Uri.parse(uri_string) catch {
-        return Provider.Error.InvalidRequest;
-    };
+    const uri = try std.Uri.parse(uri_string);
 
     const amazon_messages = convertMessagesToAmazonFormat(self.allocator, options.messages) catch |err| {
         return switch (err) {
@@ -132,16 +126,18 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
     const auth_header = try self.signer.sign("POST", uri_string, headers, body);
     defer self.allocator.free(auth_header);
 
-    var req = client.open(.POST, uri, .{
+    var req = try client.request(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
-    }) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-            error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
-    };
+        .headers = .{
+            .content_type = .{ .override = "application/json" },
+            .authorization = .{ .override = auth_header },
+        },
+    });
     defer req.deinit();
+
+    try req.headers.append("Host", host);
+    try req.headers.append("X-Amz-Date", date);
+    try req.headers.append("X-Amz-Content-Sha256", payload_hash);
 
     req.transfer_encoding = .chunked;
 
@@ -181,6 +177,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
         };
         defer self.allocator.free(error_response);
         std.debug.print("Error response: {s}\n", .{error_response});
+        std.debug.print("Status: {d}\n", .{@intFromEnum(status)});
         return Provider.Error.ApiError;
     }
 
