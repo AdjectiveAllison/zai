@@ -104,7 +104,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     const host = try std.fmt.allocPrint(self.allocator, "bedrock-runtime.{s}.amazonaws.com", .{self.config.region});
     defer self.allocator.free(host);
 
-    const date = try self.getFormattedDate();
+    const date = try self.signer.getFormattedDate();
     defer self.allocator.free(date);
 
     var headers = std.StringHashMap([]const u8).init(self.allocator);
@@ -117,17 +117,17 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     defer self.allocator.free(payload_hash);
     try headers.put("X-Amz-Content-Sha256", payload_hash);
 
-    const auth_header = try self.signer.sign("POST", uri_string, headers, body);
+    const auth_header = try self.signer.sign("POST", uri_string, &headers, body);
     defer self.allocator.free(auth_header);
 
     var extra_headers = std.ArrayList(std.http.Header).init(self.allocator);
     defer extra_headers.deinit();
 
-    try extra_headers.appendSlice(&[_]std.http.Header{
-        .{ .name = "Host", .value = host },
-        .{ .name = "X-Amz-Date", .value = date },
-        .{ .name = "X-Amz-Content-Sha256", .value = payload_hash },
-    });
+    var headers_it = headers.iterator();
+    while (headers_it.next()) |entry| {
+        try extra_headers.append(.{ .name = entry.key_ptr.*, .value = entry.value_ptr.* });
+    }
+    try extra_headers.append(.{ .name = "Authorization", .value = auth_header });
 
     var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,

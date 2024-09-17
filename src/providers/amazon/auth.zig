@@ -17,26 +17,18 @@ pub const Signer = struct {
         };
     }
 
-    pub fn sign(self: *Signer, method: []const u8, url: []const u8, headers: std.StringHashMap([]const u8), payload: []const u8) ![]const u8 {
+    pub fn sign(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]const u8 {
         const date = headers.get("X-Amz-Date") orelse return error.MissingDateHeader;
         const canonical_request = try self.createCanonicalRequest(method, url, headers, payload);
         defer self.allocator.free(canonical_request);
 
-        std.debug.print("Canonical Request:\n{s}\n", .{canonical_request});
-
         const string_to_sign = try self.createStringToSign(date, canonical_request);
         defer self.allocator.free(string_to_sign);
-
-        std.debug.print("String to Sign:\n{s}\n", .{string_to_sign});
 
         const signature = try self.calculateSignature(date[0..8], string_to_sign);
         defer self.allocator.free(signature);
 
-        std.debug.print("Signature: {s}\n", .{signature});
-
-        const auth_header = try self.createAuthorizationHeader(date[0..8], signature, headers);
-        std.debug.print("Authorization header: {s}\n", .{auth_header});
-        return auth_header;
+        return self.createAuthorizationHeader(date[0..8], signature, headers);
     }
 
     fn getSigningKey(self: *Signer, date: []const u8) ![]u8 {
