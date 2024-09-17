@@ -106,7 +106,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("Content-Type", "application/json");
     try headers.put("Host", host);
     try headers.put("X-Amz-Date", date);
-    try headers.put("X-Amz-Content-Sha256", payload_hash);
 
     const payload_hash = try self.signer.hashSha256(body);
     defer self.allocator.free(payload_hash);
