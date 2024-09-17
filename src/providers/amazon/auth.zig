@@ -35,7 +35,7 @@ pub const Signer = struct {
         return self.hashSha256Internal(data);
     }
 
-    fn hashSha256Internal(self: *Signer, data: []const u8) ![]u8 {
+    fn hashSha256Impl(self: *Signer, data: []const u8) ![]u8 {
         var hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(data, &hash, .{});
         return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
@@ -127,7 +127,7 @@ pub const Signer = struct {
         try canonical_request.append('\n');
 
         // Add payload hash
-        const payload_hash = try self.hashSha256Internal(payload);
+        const payload_hash = try self.hashSha256Impl(payload);
         defer self.allocator.free(payload_hash);
         try canonical_request.appendSlice(payload_hash);
 
@@ -146,7 +146,7 @@ pub const Signer = struct {
         try string_to_sign.appendSlice(self.region);
         try string_to_sign.appendSlice("/bedrock/aws4_request\n");
 
-        const request_hash = try self.hashSha256Internal(canonical_request);
+        const request_hash = try self.hashSha256Impl(canonical_request);
         defer self.allocator.free(request_hash);
         try string_to_sign.appendSlice(request_hash);
 
