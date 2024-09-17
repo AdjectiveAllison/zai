@@ -75,11 +75,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
 
     const uri = try std.Uri.parse(uri_string);
 
-    const amazon_messages = convertMessagesToAmazonFormat(self.allocator, options.messages) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+    const amazon_messages = try convertMessagesToAmazonFormat(self.allocator, options.messages);
     defer {
         for (amazon_messages) |msg| {
             self.allocator.free(msg.content);
@@ -88,23 +84,20 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
     }
 
     const payload = .{
-        .messages = amazon_messages,
-        .inferenceConfig = .{
-            .maxTokens = options.max_tokens,
-            .temperature = options.temperature,
-            .topP = options.top_p,
-            .stream = options.stream,
+        .prompt = .{
+            .messages = amazon_messages,
         },
+        .max_tokens = options.max_tokens,
+        .temperature = options.temperature,
+        .top_p = options.top_p,
+        .stop_sequences = options.stop,
+        .anthropic_version = "bedrock-2023-05-31",
     };
 
-    const body = std.json.stringifyAlloc(self.allocator, payload, .{
+    const body = try std.json.stringifyAlloc(self.allocator, payload, .{
         .whitespace = .minified,
         .emit_null_optional_fields = false,
-    }) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+    });
     defer self.allocator.free(body);
 
     const host = try std.fmt.allocPrint(self.allocator, "bedrock-runtime.{s}.amazonaws.com", .{self.config.region});
@@ -141,79 +134,34 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
 
     req.transfer_encoding = .chunked;
 
-    req.send() catch |err| {
-        return switch (err) {
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
-    };
-    req.writer().writeAll(body) catch |err| {
-        return switch (err) {
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
-    };
-    req.finish() catch |err| {
-        return switch (err) {
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
-    };
-    req.wait() catch |err| {
-        return switch (err) {
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
-    };
+    try req.send();
+    try req.writer().writeAll(body);
+    try req.finish();
+    try req.wait();
 
     const status = req.response.status;
 
     if (status != .ok) {
-        const error_response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
-            return switch (err) {
-                error.OutOfMemory => Provider.Error.OutOfMemory,
-                else => Provider.Error.UnexpectedError,
-            };
-        };
+        const error_response = try req.reader().readAllAlloc(self.allocator, 3276800);
         defer self.allocator.free(error_response);
         std.debug.print("Error response: {s}\n", .{error_response});
         std.debug.print("Status: {d}\n", .{@intFromEnum(status)});
         return Provider.Error.ApiError;
     }
 
-    const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-            else => Provider.Error.UnexpectedError,
-        };
-    };
+    const response = try req.reader().readAllAlloc(self.allocator, 3276800);
     defer self.allocator.free(response);
 
     std.debug.print("Response body: {s}\n", .{response});
 
     // Parse the response
-    const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, response, .{}) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-            else => Provider.Error.ParseError,
-        };
-    };
+    const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, response, .{});
     defer parsed.deinit();
 
     // Extract the content from the response
-    const output = parsed.value.object.get("output") orelse return Provider.Error.ApiError;
-    const message = output.object.get("message") orelse return Provider.Error.ApiError;
-    const content = message.object.get("content") orelse return Provider.Error.ApiError;
+    const completion = parsed.value.object.get("completion") orelse return Provider.Error.ApiError;
 
-    if (content.array.items.len == 0) return Provider.Error.ApiError;
-
-    const text = content.array.items[0].object.get("text") orelse return Provider.Error.ApiError;
-
-    return self.allocator.dupe(u8, text.string) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-        };
-    };
+    return try self.allocator.dupe(u8, completion.string);
 }
 
 fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWriter) Provider.Error!void {
@@ -264,11 +212,7 @@ fn getFormattedDate(self: *Self) ![]const u8 {
 
 const AmazonMessage = struct {
     role: []const u8,
-    content: []const AmazonContent,
-
-    const AmazonContent = struct {
-        text: []const u8,
-    };
+    content: []const u8,
 };
 
 fn convertMessagesToAmazonFormat(allocator: std.mem.Allocator, messages: []const Message) ![]AmazonMessage {
@@ -276,13 +220,9 @@ fn convertMessagesToAmazonFormat(allocator: std.mem.Allocator, messages: []const
     errdefer allocator.free(amazon_messages);
 
     for (messages, 0..) |msg, i| {
-        const content = try allocator.alloc(AmazonMessage.AmazonContent, 1);
-        errdefer allocator.free(content);
-        content[0] = .{ .text = msg.content };
-
         amazon_messages[i] = AmazonMessage{
             .role = msg.role,
-            .content = content,
+            .content = msg.content,
         };
     }
 
