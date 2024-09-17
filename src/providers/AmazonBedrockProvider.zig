@@ -136,10 +136,21 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
             .authorization = .{ .override = auth_header },
         },
         .extra_headers = extra_headers.items,
-    }) catch |err| switch (err) {
-        error.OutOfMemory => return Provider.Error.OutOfMemory,
-        error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut => return Provider.Error.NetworkError,
-        else => return Provider.Error.UnexpectedError,
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.ConnectionRefused, 
+            error.NetworkUnreachable, 
+            error.ConnectionTimedOut,
+            error.TlsInitializationFailed,
+            error.TlsAlert,
+            error.TlsFailure => Provider.Error.NetworkError,
+            error.UnsupportedUriScheme,
+            error.UriMissingHost,
+            error.InvalidContentLength,
+            error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
+            error.CertificateBundleLoadFailure => Provider.Error.UnexpectedError,
+        };
     };
     defer req.deinit();
 
