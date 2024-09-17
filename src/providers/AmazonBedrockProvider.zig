@@ -170,16 +170,33 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     const status = req.response.status;
 
     if (status != .ok) {
-        const error_response = try req.reader().readAllAlloc(self.allocator, 3276800);
+        const error_response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => Provider.Error.OutOfMemory,
+                error.ConnectionResetByPeer, error.ConnectionTimedOut => Provider.Error.NetworkError,
+                error.TlsFailure, error.TlsAlert => Provider.Error.NetworkError,
+                error.UnexpectedReadFailure => Provider.Error.UnexpectedError,
+                error.EndOfStream => Provider.Error.UnexpectedError,
+                error.HttpChunkInvalid, error.HttpHeadersOversize, error.DecompressionFailure, error.InvalidTrailers => Provider.Error.ApiError,
+                error.StreamTooLong => Provider.Error.UnexpectedError,
+            };
+        };
         defer self.allocator.free(error_response);
         std.debug.print("Error response: {s}\n", .{error_response});
         std.debug.print("Status: {d}\n", .{@intFromEnum(status)});
         return Provider.Error.ApiError;
     }
 
-    const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| return switch (err) {
-        error.OutOfMemory => Provider.Error.OutOfMemory,
-        else => Provider.Error.UnexpectedError,
+    const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.ConnectionResetByPeer, error.ConnectionTimedOut => Provider.Error.NetworkError,
+            error.TlsFailure, error.TlsAlert => Provider.Error.NetworkError,
+            error.UnexpectedReadFailure => Provider.Error.UnexpectedError,
+            error.EndOfStream => Provider.Error.UnexpectedError,
+            error.HttpChunkInvalid, error.HttpHeadersOversize, error.DecompressionFailure, error.InvalidTrailers => Provider.Error.ApiError,
+            error.StreamTooLong => Provider.Error.UnexpectedError,
+        };
     };
     defer self.allocator.free(response);
 
