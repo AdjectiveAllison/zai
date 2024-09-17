@@ -106,6 +106,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("Content-Type", "application/json");
     try headers.put("Host", host);
     try headers.put("X-Amz-Date", date);
+    try headers.put("X-Amz-Content-Sha256", payload_hash);
 
     const payload_hash = try self.signer.hashSha256(body);
     defer self.allocator.free(payload_hash);
@@ -119,6 +120,9 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         .headers = .{
             .content_type = .{ .override = "application/json" },
             .authorization = .{ .override = auth_header },
+            .host = .{ .override = host },
+            .@"x-amz-date" = .{ .override = date },
+            .@"x-amz-content-sha256" = .{ .override = payload_hash },
         },
     }) catch |err| {
         return switch (err) {
@@ -128,10 +132,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         };
     };
     defer req.deinit();
-
-    try req.headers.append("Host", host);
-    try req.headers.append("X-Amz-Date", date);
-    try req.headers.append("X-Amz-Content-Sha256", payload_hash);
 
     req.transfer_encoding = .chunked;
 
