@@ -150,7 +150,7 @@ pub const Signer = struct {
     }
 
     fn calculateSignature(self: *Signer, date: []const u8, string_to_sign: []const u8) ![]u8 {
-        var aws4_secret = try std.fmt.allocPrint(self.allocator, "AWS4{s}", .{self.secret_access_key});
+        const aws4_secret = try std.fmt.allocPrint(self.allocator, "AWS4{s}", .{self.secret_access_key});
         defer self.allocator.free(aws4_secret);
 
         const k_date = try self.hmacSha256(aws4_secret, date);
