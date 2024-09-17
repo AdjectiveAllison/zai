@@ -154,7 +154,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
             error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
             error.CertificateBundleLoadFailure,
             error.UnexpectedWriteFailure => Provider.Error.UnexpectedError,
-            else => Provider.Error.UnexpectedError,
         };
     };
     defer req.deinit();
