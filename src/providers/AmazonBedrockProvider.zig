@@ -59,7 +59,7 @@ fn completionStream(ctx: *anyopaque, options: CompletionRequestOptions, writer: 
     @panic("Not implemented for Amazon Bedrock"); // Stub
 }
 
-fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{UnexpectedCharacter,InvalidFormat,InvalidPort,MissingDateHeader})![]const u8 {
+fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 {
     const self: *Self = @ptrCast(@alignCast(ctx));
 
     var client = std.http.Client{ .allocator = self.allocator };
@@ -114,13 +114,19 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
     const auth_header = try self.signer.sign("POST", uri_string, headers, body);
     defer self.allocator.free(auth_header);
 
-    var req = try client.request(.POST, uri, .{
+    var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
         .headers = .{
             .content_type = .{ .override = "application/json" },
             .authorization = .{ .override = auth_header },
         },
-    });
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
     defer req.deinit();
 
     try req.headers.append("Host", host);
