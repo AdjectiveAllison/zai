@@ -151,17 +151,13 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
     const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, response, .{});
     defer parsed.deinit();
 
-    // Extract the content and other fields from the response
+    // Extract the content from the response
     const output = parsed.value.object.get("output") orelse return Provider.Error.ApiError;
     const message = output.object.get("message") orelse return Provider.Error.ApiError;
     const content = message.object.get("content") orelse return Provider.Error.ApiError;
 
     if (content.array.items.len == 0) return Provider.Error.ApiError;
     const text = content.array.items[0].object.get("text") orelse return Provider.Error.ApiError;
-
-    const stop_reason = parsed.value.object.get("stopReason") orelse null;
-    const usage = parsed.value.object.get("usage") orelse null;
-    const metrics = parsed.value.object.get("metrics") orelse null;
 
     return self.allocator.dupe(u8, text.string);
 }
