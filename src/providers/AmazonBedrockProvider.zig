@@ -59,7 +59,7 @@ fn completionStream(ctx: *anyopaque, options: CompletionRequestOptions, writer: 
     @panic("Not implemented for Amazon Bedrock"); // Stub
 }
 
-fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 {
+fn chat(ctx: *anyopaque, options: ChatRequestOptions) ![]const u8 {
     const self: *Self = @ptrCast(@alignCast(ctx));
 
     var client = std.http.Client{ .allocator = self.allocator };
@@ -141,10 +141,32 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     req.transfer_encoding = .chunked;
 
-    try req.send();
-    try req.writer().writeAll(body);
-    try req.finish();
-    try req.wait();
+    req.send() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            error.UnexpectedWriteFailure => Provider.Error.UnexpectedError,
+            error.InvalidContentLength, error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.writer().writeAll(body) catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.finish() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
+    req.wait() catch |err| {
+        return switch (err) {
+            error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            else => Provider.Error.UnexpectedError,
+        };
+    };
 
     const status = req.response.status;
 
