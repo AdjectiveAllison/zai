@@ -21,7 +21,7 @@ pub const Provider = struct {
         getModels: *const fn (ctx: *anyopaque) Error![]const models.ModelInfo,
     };
 
-    pub const Error = core.ZaiError;
+    pub const Error = core.ZaiError || error{UnexpectedCharacter,InvalidFormat,InvalidPort,MissingDateHeader};
 
     pub fn init(allocator: std.mem.Allocator, provider_config: config.ProviderConfig) !Provider {
         return switch (provider_config) {

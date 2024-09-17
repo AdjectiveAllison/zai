@@ -59,7 +59,7 @@ fn completionStream(ctx: *anyopaque, options: CompletionRequestOptions, writer: 
     @panic("Not implemented for Amazon Bedrock"); // Stub
 }
 
-fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 {
+fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{UnexpectedCharacter,InvalidFormat,InvalidPort,MissingDateHeader})![]const u8 {
     const self: *Self = @ptrCast(@alignCast(ctx));
 
     var client = std.http.Client{ .allocator = self.allocator };
