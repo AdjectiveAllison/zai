@@ -32,7 +32,7 @@ pub const Signer = struct {
     }
 
     pub fn hashSha256(self: *Signer, data: []const u8) ![]u8 {
-        return self.hashSha256Internal(data);
+        return self.hashSha256Impl(data);
     }
 
     fn hashSha256Impl(self: *Signer, data: []const u8) ![]u8 {
