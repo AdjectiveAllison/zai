@@ -59,7 +59,7 @@ fn completionStream(ctx: *anyopaque, options: CompletionRequestOptions, writer: 
     @panic("Not implemented for Amazon Bedrock"); // Stub
 }
 
-fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{UnexpectedCharacter,InvalidFormat,InvalidPort,MissingDateHeader})![]const u8 {
+fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{UnexpectedCharacter,InvalidFormat,InvalidPort,MissingDateHeader})!ChatResponse {
     const self: *Self = @ptrCast(@alignCast(ctx));
 
     var client = std.http.Client{ .allocator = self.allocator };
@@ -87,7 +87,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
             .topP = options.top_p,
             .stopSequences = options.stop,
         },
-        .anthropic_version = "bedrock-2023-05-31",
     };
 
     const body = try std.json.stringifyAlloc(self.allocator, payload, .{
@@ -148,13 +147,11 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
     const response = try req.reader().readAllAlloc(self.allocator, 3276800);
     defer self.allocator.free(response);
 
-    std.debug.print("Response body: {s}\n", .{response});
-
     // Parse the response
     const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, response, .{});
     defer parsed.deinit();
 
-    // Extract the content from the response
+    // Extract the content and other fields from the response
     const output = parsed.value.object.get("output") orelse return Provider.Error.ApiError;
     const message = output.object.get("message") orelse return Provider.Error.ApiError;
     const content = message.object.get("content") orelse return Provider.Error.ApiError;
@@ -162,7 +159,20 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
     if (content.array.items.len == 0) return Provider.Error.ApiError;
     const text = content.array.items[0].object.get("text") orelse return Provider.Error.ApiError;
 
-    return try self.allocator.dupe(u8, text.string);
+    const stop_reason = parsed.value.object.get("stopReason") orelse null;
+    const usage = parsed.value.object.get("usage") orelse null;
+    const metrics = parsed.value.object.get("metrics") orelse null;
+
+    return ChatResponse{
+        .content = try self.allocator.dupe(u8, text.string),
+        .stop_reason = if (stop_reason) |sr| try self.allocator.dupe(u8, sr.string) else null,
+        .usage = if (usage) |u| TokenUsage{
+            .prompt_tokens = u.object.get("inputTokens").?.integer(),
+            .completion_tokens = u.object.get("outputTokens").?.integer(),
+            .total_tokens = u.object.get("totalTokens").?.integer(),
+        } else null,
+        .latency_ms = if (metrics) |m| m.object.get("latencyMs").?.integer() else null,
+    };
 }
 
 fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWriter) Provider.Error!void {
@@ -220,3 +230,15 @@ const AmazonContent = struct {
     text: []const u8,
 };
 
+const ChatResponse = struct {
+    content: []const u8,
+    stop_reason: ?[]const u8,
+    usage: ?TokenUsage,
+    latency_ms: ?i64,
+};
+
+const TokenUsage = struct {
+    prompt_tokens: i64,
+    completion_tokens: i64,
+    total_tokens: i64,
+};
