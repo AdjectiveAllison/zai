@@ -34,11 +34,6 @@ pub const Signer = struct {
 
         std.debug.print("Signature: {s}\n", .{signature});
 
-        // Add debug print for signing key
-        const signing_key = try self.getSigningKey(date[0..8]);
-        defer self.allocator.free(signing_key);
-        std.debug.print("Signing Key: {s}\n", .{std.fmt.fmtSliceHexLower(signing_key)});
-
         const auth_header = try self.createAuthorizationHeader(date[0..8], signature, headers);
         std.debug.print("Authorization header: {s}\n", .{auth_header});
         return auth_header;
@@ -148,31 +143,17 @@ pub const Signer = struct {
         try string_to_sign.appendSlice(self.region);
         try string_to_sign.appendSlice("/bedrock/aws4_request\n");
 
-        const request_hash = try self.hashSha256Impl(canonical_request);
-        defer self.allocator.free(request_hash);
+        const request_hash = try self.hashSha256(canonical_request);
         try string_to_sign.appendSlice(request_hash);
 
         return string_to_sign.toOwnedSlice();
     }
 
     fn calculateSignature(self: *Signer, date: []const u8, string_to_sign: []const u8) ![]u8 {
-        var signing_key = std.ArrayList(u8).init(self.allocator);
-        defer signing_key.deinit();
-
-        try signing_key.appendSlice("AWS4");
-        try signing_key.appendSlice(self.secret_access_key);
-
-        const k_date = try self.hmacSha256(signing_key.items, date[0..8]);
-        defer self.allocator.free(k_date);
-
+        const k_date = try self.hmacSha256("AWS4" ++ self.secret_access_key, date);
         const k_region = try self.hmacSha256(k_date, self.region);
-        defer self.allocator.free(k_region);
-
         const k_service = try self.hmacSha256(k_region, "bedrock");
-        defer self.allocator.free(k_service);
-
         const k_signing = try self.hmacSha256(k_service, "aws4_request");
-        defer self.allocator.free(k_signing);
 
         return self.hmacSha256(k_signing, string_to_sign);
     }
@@ -245,6 +226,6 @@ pub const Signer = struct {
     fn hmacSha256(self: *Signer, key: []const u8, data: []const u8) ![]u8 {
         var hmac: [HmacSha256.mac_length]u8 = undefined;
         HmacSha256.create(&hmac, data, key);
-        return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hmac)});
+        return self.allocator.dupe(u8, &hmac);
     }
 };
