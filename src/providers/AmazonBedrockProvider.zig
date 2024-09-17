@@ -59,7 +59,7 @@ fn completionStream(ctx: *anyopaque, options: CompletionRequestOptions, writer: 
     @panic("Not implemented for Amazon Bedrock"); // Stub
 }
 
-fn chat(ctx: *anyopaque, options: ChatRequestOptions) ![]const u8 {
+fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 {
     const self: *Self = @ptrCast(@alignCast(ctx));
 
     var client = std.http.Client{ .allocator = self.allocator };
@@ -67,13 +67,17 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) ![]const u8 {
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = try std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
         self.config.base_url,
         options.model,
-    });
+    }) catch |err| switch (err) {
+        error.OutOfMemory => return Provider.Error.OutOfMemory,
+    };
     defer self.allocator.free(uri_string);
 
-    const uri = try std.Uri.parse(uri_string);
+    const uri = std.Uri.parse(uri_string) catch {
+        return Provider.Error.InvalidRequest;
+    };
 
     const payload = .{
         .messages = options.messages,
@@ -89,10 +93,12 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) ![]const u8 {
         },
     };
 
-    const body = try std.json.stringifyAlloc(self.allocator, payload, .{
+    const body = std.json.stringifyAlloc(self.allocator, payload, .{
         .whitespace = .minified,
         .emit_null_optional_fields = false,
-    });
+    }) catch |err| switch (err) {
+        error.OutOfMemory => return Provider.Error.OutOfMemory,
+    };
     defer self.allocator.free(body);
 
     const host = try std.fmt.allocPrint(self.allocator, "bedrock-runtime.{s}.amazonaws.com", .{self.config.region});
@@ -130,33 +136,32 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) ![]const u8 {
             .authorization = .{ .override = auth_header },
         },
         .extra_headers = extra_headers.items,
-    }) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-            error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
+    }) catch |err| switch (err) {
+        error.OutOfMemory => return Provider.Error.OutOfMemory,
+        error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut => return Provider.Error.NetworkError,
+        else => return Provider.Error.UnexpectedError,
     };
     defer req.deinit();
 
     req.transfer_encoding = .chunked;
 
-    req.send() catch |err| switch (err) {
-        error.ConnectionResetByPeer => return Provider.Error.NetworkError,
-        error.UnexpectedWriteFailure => return Provider.Error.UnexpectedError,
-        error.InvalidContentLength, error.UnsupportedTransferEncoding => return Provider.Error.InvalidRequest,
+    req.send() catch |err| return switch (err) {
+        error.ConnectionResetByPeer => Provider.Error.NetworkError,
+        error.UnexpectedWriteFailure => Provider.Error.UnexpectedError,
+        error.InvalidContentLength, error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
+        else => Provider.Error.UnexpectedError,
     };
-    req.writer().writeAll(body) catch |err| switch (err) {
-        error.ConnectionResetByPeer => return Provider.Error.NetworkError,
-        else => return Provider.Error.UnexpectedError,
+    req.writer().writeAll(body) catch |err| return switch (err) {
+        error.ConnectionResetByPeer => Provider.Error.NetworkError,
+        else => Provider.Error.UnexpectedError,
     };
-    req.finish() catch |err| switch (err) {
-        error.ConnectionResetByPeer => return Provider.Error.NetworkError,
-        else => return Provider.Error.UnexpectedError,
+    req.finish() catch |err| return switch (err) {
+        error.ConnectionResetByPeer => Provider.Error.NetworkError,
+        else => Provider.Error.UnexpectedError,
     };
-    req.wait() catch |err| switch (err) {
-        error.ConnectionResetByPeer => return Provider.Error.NetworkError,
-        else => return Provider.Error.UnexpectedError,
+    req.wait() catch |err| return switch (err) {
+        error.ConnectionResetByPeer => Provider.Error.NetworkError,
+        else => Provider.Error.UnexpectedError,
     };
 
     const status = req.response.status;
@@ -169,11 +174,17 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) ![]const u8 {
         return Provider.Error.ApiError;
     }
 
-    const response = try req.reader().readAllAlloc(self.allocator, 3276800);
+    const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| return switch (err) {
+        error.OutOfMemory => Provider.Error.OutOfMemory,
+        else => Provider.Error.UnexpectedError,
+    };
     defer self.allocator.free(response);
 
     // Parse the response
-    const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, response, .{});
+    const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, response, .{}) catch |err| return switch (err) {
+        error.OutOfMemory => Provider.Error.OutOfMemory,
+        else => Provider.Error.ParseError,
+    };
     defer parsed.deinit();
 
     // Extract the content from the response
