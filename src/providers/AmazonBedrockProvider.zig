@@ -143,13 +143,18 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
             error.NetworkUnreachable, 
             error.ConnectionTimedOut,
             error.TlsInitializationFailed,
-            error.TlsAlert,
-            error.TlsFailure => Provider.Error.NetworkError,
+            error.TemporaryNameServerFailure,
+            error.NameServerFailure,
+            error.UnknownHostName,
+            error.HostLacksNetworkAddresses,
+            error.UnexpectedConnectFailure => Provider.Error.NetworkError,
             error.UnsupportedUriScheme,
             error.UriMissingHost,
             error.InvalidContentLength,
             error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
-            error.CertificateBundleLoadFailure => Provider.Error.UnexpectedError,
+            error.CertificateBundleLoadFailure,
+            error.UnexpectedWriteFailure => Provider.Error.UnexpectedError,
+            else => Provider.Error.UnexpectedError,
         };
     };
     defer req.deinit();
