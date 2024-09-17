@@ -22,11 +22,17 @@ pub const Signer = struct {
         const canonical_request = try self.createCanonicalRequest(method, url, headers, payload);
         defer self.allocator.free(canonical_request);
 
+        std.debug.print("Canonical Request:\n{s}\n", .{canonical_request});
+
         const string_to_sign = try self.createStringToSign(date, canonical_request);
         defer self.allocator.free(string_to_sign);
 
+        std.debug.print("String to Sign:\n{s}\n", .{string_to_sign});
+
         const signature = try self.calculateSignature(date[0..8], string_to_sign);
         defer self.allocator.free(signature);
+
+        std.debug.print("Signature: {s}\n", .{signature});
 
         const auth_header = try self.createAuthorizationHeader(date[0..8], signature, headers);
         std.debug.print("Authorization header: {s}\n", .{auth_header});
@@ -58,40 +64,14 @@ pub const Signer = struct {
             .percent_encoded => |encoded| {
                 const decoded = try self.allocator.dupe(u8, encoded);
                 defer self.allocator.free(decoded);
-                const decoded_path = std.Uri.percentDecodeInPlace(decoded);
+                const decoded_path = std.Uri.percentDecode(decoded);
                 try canonical_request.appendSlice(decoded_path);
             },
         }
         try canonical_request.append('\n');
 
         // Add canonical query string (sorted by key)
-        const QueryParam = struct { key: []const u8, value: []const u8 };
-        var query_params = std.ArrayList(QueryParam).init(self.allocator);
-        defer query_params.deinit();
-
-        if (uri.query) |query| {
-            var query_it = std.mem.splitSequence(u8, query.percent_encoded, "&");
-            while (query_it.next()) |pair| {
-                var kv_it = std.mem.splitScalar(u8, pair, '=');
-                const key = kv_it.next() orelse continue;
-                const value = kv_it.next() orelse "";
-                try query_params.append(.{ .key = key, .value = value });
-            }
-
-            std.mem.sort(QueryParam, query_params.items, {}, struct {
-                fn lessThan(_: void, a: QueryParam, b: QueryParam) bool {
-                    return std.mem.lessThan(u8, a.key, b.key);
-                }
-            }.lessThan);
-
-            for (query_params.items, 0..) |param, i| {
-                if (i > 0) try canonical_request.append('&');
-                try canonical_request.appendSlice(param.key);
-                try canonical_request.append('=');
-                try canonical_request.appendSlice(param.value);
-            }
-        }
-        try canonical_request.append('\n');
+        try canonical_request.append('\n'); // Empty query string
 
         // Add canonical headers
         const SortedHeader = struct { name: []const u8, value: []const u8 };
@@ -185,7 +165,7 @@ pub const Signer = struct {
         try auth_header.appendSlice("Credential=");
         try auth_header.appendSlice(self.access_key_id);
         try auth_header.append('/');
-        try auth_header.appendSlice(date[0..8]);
+        try auth_header.appendSlice(date);
         try auth_header.append('/');
         try auth_header.appendSlice(self.region);
         try auth_header.appendSlice("/bedrock/aws4_request,");
