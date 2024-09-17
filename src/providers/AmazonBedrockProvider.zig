@@ -139,25 +139,10 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     }) catch |err| {
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
-            error.ConnectionRefused, 
-            error.NetworkUnreachable, 
-            error.ConnectionTimedOut,
-            error.TlsInitializationFailed,
-            error.TemporaryNameServerFailure,
-            error.NameServerFailure,
-            error.UnknownHostName,
-            error.HostLacksNetworkAddresses,
-            error.UnexpectedConnectFailure,
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            error.UnsupportedUriScheme,
-            error.UriMissingHost,
-            error.InvalidContentLength,
-            error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
-            error.CertificateBundleLoadFailure,
-            error.UnexpectedWriteFailure => Provider.Error.UnexpectedError,
-            error.Overflow,
-            error.InvalidCharacter => Provider.Error.InvalidRequest,
-            else => Provider.Error.UnexpectedError,
+            error.ConnectionRefused, error.NetworkUnreachable, error.ConnectionTimedOut, error.TlsInitializationFailed, error.TemporaryNameServerFailure, error.NameServerFailure, error.UnknownHostName, error.HostLacksNetworkAddresses, error.UnexpectedConnectFailure, error.ConnectionResetByPeer => Provider.Error.NetworkError,
+            error.UnsupportedUriScheme, error.UriMissingHost, error.InvalidContentLength, error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
+            error.CertificateBundleLoadFailure, error.UnexpectedWriteFailure => Provider.Error.UnexpectedError,
+            error.Overflow, error.InvalidCharacter => Provider.Error.InvalidRequest,
         };
     };
     defer req.deinit();
@@ -168,7 +153,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         error.ConnectionResetByPeer => Provider.Error.NetworkError,
         error.UnexpectedWriteFailure => Provider.Error.UnexpectedError,
         error.InvalidContentLength, error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
-        else => Provider.Error.UnexpectedError,
     };
     req.writer().writeAll(body) catch |err| return switch (err) {
         error.ConnectionResetByPeer => Provider.Error.NetworkError,
