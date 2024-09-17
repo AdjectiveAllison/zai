@@ -79,7 +79,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
         .messages = options.messages,
         .system = &[_]AmazonMessage{.{
             .role = "system",
-            .content = &[_]AmazonContent{.{ .text = "You are a helpful AI assistant." }},
+            .content = [_]AmazonContent{.{ .text = "You are a helpful AI assistant." }},
         }},
         .inferenceConfig = .{
             .maxTokens = options.max_tokens,
@@ -210,7 +210,7 @@ fn getFormattedDate(self: *Self) ![]const u8 {
 
 const AmazonMessage = struct {
     role: []const u8,
-    content: []AmazonContent,
+    content: []const AmazonContent,
 };
 
 const AmazonContent = struct {
