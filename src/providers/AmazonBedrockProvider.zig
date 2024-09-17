@@ -67,7 +67,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = try std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{
+    const uri_string = try std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
         self.config.base_url,
         options.model,
     });
@@ -75,22 +75,18 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
 
     const uri = try std.Uri.parse(uri_string);
 
-    const amazon_messages = try convertMessagesToAmazonFormat(self.allocator, options.messages);
-    defer {
-        for (amazon_messages) |msg| {
-            self.allocator.free(msg.content);
-        }
-        self.allocator.free(amazon_messages);
-    }
-
     const payload = .{
-        .prompt = .{
-            .messages = amazon_messages,
+        .messages = options.messages,
+        .system = &[_]AmazonMessage{.{
+            .role = "system",
+            .content = [_]AmazonContent{.{ .text = "You are a helpful AI assistant." }},
+        }},
+        .inferenceConfig = .{
+            .maxTokens = options.max_tokens,
+            .temperature = options.temperature,
+            .topP = options.top_p,
+            .stopSequences = options.stop,
         },
-        .max_tokens = options.max_tokens,
-        .temperature = options.temperature,
-        .top_p = options.top_p,
-        .stop_sequences = options.stop,
         .anthropic_version = "bedrock-2023-05-31",
     };
 
@@ -159,9 +155,14 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
     defer parsed.deinit();
 
     // Extract the content from the response
-    const completion = parsed.value.object.get("completion") orelse return Provider.Error.ApiError;
+    const output = parsed.value.object.get("output") orelse return Provider.Error.ApiError;
+    const message = output.object.get("message") orelse return Provider.Error.ApiError;
+    const content = message.object.get("content") orelse return Provider.Error.ApiError;
 
-    return try self.allocator.dupe(u8, completion.string);
+    if (content.array.items.len == 0) return Provider.Error.ApiError;
+    const text = content.array.items[0].object.get("text") orelse return Provider.Error.ApiError;
+
+    return try self.allocator.dupe(u8, text.string);
 }
 
 fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWriter) Provider.Error!void {
@@ -212,19 +213,10 @@ fn getFormattedDate(self: *Self) ![]const u8 {
 
 const AmazonMessage = struct {
     role: []const u8,
-    content: []const u8,
+    content: []AmazonContent,
 };
 
-fn convertMessagesToAmazonFormat(allocator: std.mem.Allocator, messages: []const Message) ![]AmazonMessage {
-    var amazon_messages = try allocator.alloc(AmazonMessage, messages.len);
-    errdefer allocator.free(amazon_messages);
+const AmazonContent = struct {
+    text: []const u8,
+};
 
-    for (messages, 0..) |msg, i| {
-        amazon_messages[i] = AmazonMessage{
-            .role = msg.role,
-            .content = msg.content,
-        };
-    }
-
-    return amazon_messages;
-}
