@@ -203,7 +203,7 @@ pub const Signer = struct {
         return auth_header.toOwnedSlice();
     }
 
-    fn getFormattedDate(self: *Signer) ![]const u8 {
+    pub fn getFormattedDate(self: *Signer) ![]const u8 {
         const timestamp = std.time.timestamp();
         const datetime = std.time.epoch.EpochSeconds{ .secs = @intCast(timestamp) };
         return std.fmt.allocPrint(self.allocator, "{d:0>4}{d:0>2}{d:0>2}T{d:0>2}{d:0>2}{d:0>2}Z", .{
