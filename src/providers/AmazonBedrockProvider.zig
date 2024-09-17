@@ -59,7 +59,7 @@ fn completionStream(ctx: *anyopaque, options: CompletionRequestOptions, writer: 
     @panic("Not implemented for Amazon Bedrock"); // Stub
 }
 
-fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{UnexpectedCharacter,InvalidFormat,InvalidPort,MissingDateHeader})!ChatResponse {
+fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{UnexpectedCharacter,InvalidFormat,InvalidPort,MissingDateHeader})![]const u8 {
     const self: *Self = @ptrCast(@alignCast(ctx));
 
     var client = std.http.Client{ .allocator = self.allocator };
@@ -79,7 +79,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
         .messages = options.messages,
         .system = &[_]AmazonMessage{.{
             .role = "system",
-            .content = [_]AmazonContent{.{ .text = "You are a helpful AI assistant." }},
+            .content = &[_]AmazonContent{.{ .text = "You are a helpful AI assistant." }},
         }},
         .inferenceConfig = .{
             .maxTokens = options.max_tokens,
@@ -163,16 +163,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) (Provider.Error || error{U
     const usage = parsed.value.object.get("usage") orelse null;
     const metrics = parsed.value.object.get("metrics") orelse null;
 
-    return ChatResponse{
-        .content = try self.allocator.dupe(u8, text.string),
-        .stop_reason = if (stop_reason) |sr| try self.allocator.dupe(u8, sr.string) else null,
-        .usage = if (usage) |u| TokenUsage{
-            .prompt_tokens = u.object.get("inputTokens").?.integer(),
-            .completion_tokens = u.object.get("outputTokens").?.integer(),
-            .total_tokens = u.object.get("totalTokens").?.integer(),
-        } else null,
-        .latency_ms = if (metrics) |m| m.object.get("latencyMs").?.integer() else null,
-    };
+    return self.allocator.dupe(u8, text.string);
 }
 
 fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWriter) Provider.Error!void {
