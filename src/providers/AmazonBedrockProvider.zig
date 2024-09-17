@@ -125,22 +125,15 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("Host", host);
     try headers.put("X-Amz-Date", date);
 
-    const auth_header = self.signer.sign("POST", uri_string, headers, body) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-            error.UnexpectedCharacter, error.InvalidFormat, error.InvalidPort, error.MissingDateHeader => Provider.Error.InvalidRequest,
-        };
-    };
+    const payload_hash = try self.signer.hashSha256(body);
+    defer self.allocator.free(payload_hash);
+    try headers.put("X-Amz-Content-Sha256", payload_hash);
+
+    const auth_header = try self.signer.sign("POST", uri_string, headers, body);
     defer self.allocator.free(auth_header);
 
     var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
-        .extra_headers = &[_]std.http.Header{
-            .{ .name = "Content-Type", .value = "application/json" },
-            .{ .name = "Authorization", .value = auth_header },
-            .{ .name = "Host", .value = host },
-            .{ .name = "X-Amz-Date", .value = date },
-        },
     }) catch |err| {
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,

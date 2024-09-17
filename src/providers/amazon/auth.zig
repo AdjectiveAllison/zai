@@ -28,7 +28,13 @@ pub const Signer = struct {
         const signature = try self.calculateSignature(date[0..8], string_to_sign);
         defer self.allocator.free(signature);
 
-        return self.createAuthorizationHeader(date, signature, headers);
+        return self.createAuthorizationHeader(date[0..8], signature, headers);
+    }
+
+    pub fn hashSha256(self: *Signer, data: []const u8) ![]u8 {
+        var hash: [Sha256.digest_length]u8 = undefined;
+        Sha256.hash(data, &hash, .{});
+        return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
     }
 
     fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
