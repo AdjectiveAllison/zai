@@ -62,10 +62,9 @@ pub const Signer = struct {
         switch (uri.path) {
             .raw => |raw| try canonical_request.appendSlice(raw),
             .percent_encoded => |encoded| {
-                const decoded = try self.allocator.dupe(u8, encoded);
+                var decoded = try std.Uri.unescapeString(self.allocator, encoded);
                 defer self.allocator.free(decoded);
-                const decoded_path = std.Uri.percentDecode(decoded);
-                try canonical_request.appendSlice(decoded_path);
+                try canonical_request.appendSlice(decoded);
             },
         }
         try canonical_request.append('\n');
