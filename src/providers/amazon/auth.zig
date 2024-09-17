@@ -56,7 +56,7 @@ pub const Signer = struct {
         return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
     }
 
-    fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
+    fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
         var canonical_request = std.ArrayList(u8).init(self.allocator);
         defer canonical_request.deinit();
 
