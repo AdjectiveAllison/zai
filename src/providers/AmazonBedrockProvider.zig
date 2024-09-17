@@ -141,31 +141,22 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) ![]const u8 {
 
     req.transfer_encoding = .chunked;
 
-    req.send() catch |err| {
-        return switch (err) {
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            error.UnexpectedWriteFailure => Provider.Error.UnexpectedError,
-            error.InvalidContentLength, error.UnsupportedTransferEncoding => Provider.Error.InvalidRequest,
-            else => Provider.Error.UnexpectedError,
-        };
+    req.send() catch |err| switch (err) {
+        error.ConnectionResetByPeer => return Provider.Error.NetworkError,
+        error.UnexpectedWriteFailure => return Provider.Error.UnexpectedError,
+        error.InvalidContentLength, error.UnsupportedTransferEncoding => return Provider.Error.InvalidRequest,
     };
-    req.writer().writeAll(body) catch |err| {
-        return switch (err) {
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
+    req.writer().writeAll(body) catch |err| switch (err) {
+        error.ConnectionResetByPeer => return Provider.Error.NetworkError,
+        else => return Provider.Error.UnexpectedError,
     };
-    req.finish() catch |err| {
-        return switch (err) {
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
+    req.finish() catch |err| switch (err) {
+        error.ConnectionResetByPeer => return Provider.Error.NetworkError,
+        else => return Provider.Error.UnexpectedError,
     };
-    req.wait() catch |err| {
-        return switch (err) {
-            error.ConnectionResetByPeer => Provider.Error.NetworkError,
-            else => Provider.Error.UnexpectedError,
-        };
+    req.wait() catch |err| switch (err) {
+        error.ConnectionResetByPeer => return Provider.Error.NetworkError,
+        else => return Provider.Error.UnexpectedError,
     };
 
     const status = req.response.status;
