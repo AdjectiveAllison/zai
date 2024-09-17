@@ -157,7 +157,7 @@ pub const Signer = struct {
         return self.hmacSha256(k_signing, string_to_sign);
     }
 
-    fn createAuthorizationHeader(self: *Signer, date: []const u8, signature: []const u8, headers: std.StringHashMap([]const u8)) ![]u8 {
+    fn createAuthorizationHeader(self: *Signer, date: []const u8, signature: []const u8, headers: *const std.StringHashMap([]const u8)) ![]u8 {
         var auth_header = std.ArrayList(u8).init(self.allocator);
         defer auth_header.deinit();
 
