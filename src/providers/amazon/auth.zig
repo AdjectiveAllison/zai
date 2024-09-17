@@ -34,9 +34,29 @@ pub const Signer = struct {
 
         std.debug.print("Signature: {s}\n", .{signature});
 
+        // Add debug print for signing key
+        const signing_key = try self.getSigningKey(date[0..8]);
+        defer self.allocator.free(signing_key);
+        std.debug.print("Signing Key: {s}\n", .{std.fmt.fmtSliceHexLower(signing_key)});
+
         const auth_header = try self.createAuthorizationHeader(date[0..8], signature, headers);
         std.debug.print("Authorization header: {s}\n", .{auth_header});
         return auth_header;
+    }
+
+    fn getSigningKey(self: *Signer, date: []const u8) ![]u8 {
+        var signing_key = std.ArrayList(u8).init(self.allocator);
+        defer signing_key.deinit();
+
+        try signing_key.appendSlice("AWS4");
+        try signing_key.appendSlice(self.secret_access_key);
+
+        const k_date = try self.hmacSha256(signing_key.items, date);
+        const k_region = try self.hmacSha256(k_date, self.region);
+        const k_service = try self.hmacSha256(k_region, "bedrock");
+        const k_signing = try self.hmacSha256(k_service, "aws4_request");
+
+        return k_signing;
     }
 
     pub fn hashSha256(self: *Signer, data: []const u8) ![]u8 {
