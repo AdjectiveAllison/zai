@@ -62,7 +62,7 @@ pub const Signer = struct {
         switch (uri.path) {
             .raw => |raw| try canonical_request.appendSlice(raw),
             .percent_encoded => |encoded| {
-                var decoded = try std.Uri.unescapeString(self.allocator, encoded);
+                const decoded = try std.Uri.unescapeString(self.allocator, encoded);
                 defer self.allocator.free(decoded);
                 try canonical_request.appendSlice(decoded);
             },
