@@ -114,15 +114,22 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     const auth_header = try self.signer.sign("POST", uri_string, headers, body);
     defer self.allocator.free(auth_header);
 
+    var extra_headers = std.ArrayList(std.http.Header).init(self.allocator);
+    defer extra_headers.deinit();
+
+    try extra_headers.appendSlice(&[_]std.http.Header{
+        .{ .name = "Host", .value = host },
+        .{ .name = "X-Amz-Date", .value = date },
+        .{ .name = "X-Amz-Content-Sha256", .value = payload_hash },
+    });
+
     var req = client.open(.POST, uri, .{
         .server_header_buffer = &response_header_buffer,
         .headers = .{
             .content_type = .{ .override = "application/json" },
             .authorization = .{ .override = auth_header },
-            .host = .{ .override = host },
-            .@"x-amz-date" = .{ .override = date },
-            .@"x-amz-content-sha256" = .{ .override = payload_hash },
         },
+        .extra_headers = extra_headers.items,
     }) catch |err| {
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
