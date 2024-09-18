@@ -100,7 +100,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
         self.config.base_url,
         options.model,
     }) catch |err| switch (err) {
@@ -171,7 +171,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     defer self.allocator.free(auth_header);
 
     // Free the prompt after we're done with it
-    defer self.allocator.free(payload.prompt);
 
     var extra_headers = std.ArrayList(std.http.Header).init(self.allocator);
     defer extra_headers.deinit();
@@ -337,11 +336,6 @@ fn getFormattedDate(self: *Self) ![]const u8 {
         day_seconds.getSecondsIntoMinute(),
     });
 }
-
-const AmazonMessage = struct {
-    role: []const u8,
-    content: []const u8,
-};
 
 const ChatResponse = struct {
     output: struct {
