@@ -209,7 +209,15 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         for (extra_headers.items) |header| {
             std.debug.print("{s}: {s}\n", .{ header.name, header.value });
         }
-        return error.ApiError;
+        return switch (status) {
+            .bad_request => Provider.Error.InvalidRequest,
+            .unauthorized => Provider.Error.Unauthorized,
+            .forbidden => Provider.Error.Forbidden,
+            .not_found => Provider.Error.NotFound,
+            .too_many_requests => Provider.Error.RateLimitExceeded,
+            .internal_server_error => Provider.Error.ServerError,
+            else => Provider.Error.ApiError,
+        };
     }
 
     const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
