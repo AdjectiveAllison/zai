@@ -35,7 +35,36 @@ const AmazonSystemMessage = struct {
 
 const AmazonMessage = struct {
     role: []const u8,
-    content: []const u8,
+    content: ContentBlock,
+};
+
+const ContentBlock = union(enum) {
+    document: DocumentBlock,
+    guardContent: GuardrailConverseContentBlock,
+    image: ImageBlock,
+    text: []const u8,
+    toolResult: ToolResultBlock,
+    toolUse: ToolUseBlock,
+};
+
+const DocumentBlock = struct {
+    // TODO: Add fields for DocumentBlock
+};
+
+const GuardrailConverseContentBlock = struct {
+    // TODO: Add fields for GuardrailConverseContentBlock
+};
+
+const ImageBlock = struct {
+    // TODO: Add fields for ImageBlock
+};
+
+const ToolResultBlock = struct {
+    // TODO: Add fields for ToolResultBlock
+};
+
+const ToolUseBlock = struct {
+    // TODO: Add fields for ToolUseBlock
 };
 const models = @import("../models.zig");
 const ModelInfo = models.ModelInfo;
