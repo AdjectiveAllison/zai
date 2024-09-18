@@ -28,7 +28,7 @@ pub const Signer = struct {
         const signature = try self.calculateSignature(date[0..8], string_to_sign);
         defer self.allocator.free(signature);
 
-        const auth_header = try self.createAuthorizationHeader(date[0..8], signature, headers);
+        const auth_header = try self.createAuthorizationHeader(&date[0..8], signature, headers);
 
         // Debug print
         std.debug.print("Authorization Header: {s}\n", .{auth_header});
@@ -165,7 +165,7 @@ pub const Signer = struct {
         return string_to_sign.toOwnedSlice();
     }
 
-    fn createAuthorizationHeader(self: *Signer, date: []const u8, signature: []const u8, headers: *const std.StringHashMap([]const u8)) ![]u8 {
+    fn createAuthorizationHeader(self: *Signer, date: *const [8]u8, signature: []const u8, headers: *const std.StringHashMap([]const u8)) ![]u8 {
         var auth_header = std.ArrayList(u8).init(self.allocator);
         defer auth_header.deinit();
 
