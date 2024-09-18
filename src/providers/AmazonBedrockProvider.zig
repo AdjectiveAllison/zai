@@ -22,7 +22,6 @@ pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) Provider.
     var self = allocator.create(Self) catch |err| {
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
-            error.NoSpaceLeft => Provider.Error.OutOfMemory, // Treat NoSpaceLeft as OutOfMemory
         };
     };
     errdefer allocator.destroy(self);
