@@ -18,8 +18,13 @@ allocator: std.mem.Allocator,
 config: AmazonBedrockConfig,
 signer: Signer,
 
-pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider {
-    var self = try allocator.create(Self);
+pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) Provider.Error!Provider {
+    var self = allocator.create(Self) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.NoSpaceLeft => Provider.Error.OutOfMemory, // Treat NoSpaceLeft as OutOfMemory
+        };
+    };
     errdefer allocator.destroy(self);
 
     self.allocator = allocator;
