@@ -210,7 +210,8 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
             std.debug.print("{s}: {s}\n", .{ header.name, header.value });
         }
         std.debug.print("Response headers:\n", .{});
-        for (req.response.headers.list.items) |header| {
+        var header_it = req.response.headers.iterator();
+        while (header_it.next()) |header| {
             std.debug.print("{s}: {s}\n", .{ header.name, header.value });
         }
         return switch (status) {
