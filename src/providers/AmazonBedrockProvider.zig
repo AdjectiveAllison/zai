@@ -17,9 +17,11 @@ fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !st
         if (std.mem.eql(u8, msg.role, "system")) {
             try system_messages.append(.{ .text = msg.content });
         } else if (std.mem.eql(u8, msg.role, "user") or std.mem.eql(u8, msg.role, "assistant")) {
+            var content_blocks = std.ArrayList(ContentBlock).init(allocator);
+            try content_blocks.append(.{ .text = msg.content });
             try amazon_messages.append(.{
                 .role = msg.role,
-                .content = ContentBlock{ .text = msg.content },
+                .content = try content_blocks.toOwnedSlice(),
             });
         } else {
             // Ignore other roles or potentially return an error
@@ -38,7 +40,7 @@ const AmazonSystemMessage = struct {
 
 const AmazonMessage = struct {
     role: []const u8,
-    content: ContentBlock,
+    content: []const ContentBlock,
 };
 
 const ContentBlock = union(enum) {
