@@ -71,7 +71,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{
         self.config.base_url,
         options.model,
     }) catch |err| switch (err) {
@@ -83,21 +83,13 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         return Provider.Error.InvalidRequest;
     };
 
-    const formatted_messages = try formatMessages(self.allocator, options.messages);
-    defer {
-        for (formatted_messages) |msg| {
-            self.allocator.free(msg.content);
-        }
-        self.allocator.free(formatted_messages);
-    }
-
+    // Prepare the request payload
     const payload = .{
-        .prompt = try std.fmt.allocPrint(self.allocator, "\n\nHuman: {s}\n\nAssistant:", .{options.messages[0].content}),
-        .max_tokens_to_sample = options.max_tokens orelse 256,
+        .messages = options.messages,
+        .max_tokens = options.max_tokens orelse 256,
         .temperature = options.temperature orelse 0.7,
         .top_p = options.top_p orelse 1,
-        .stop_sequences = if (options.stop) |stop| stop else &[_][]const u8{"\n\nHuman:"},
-        .anthropic_version = "bedrock-2023-05-31",
+        .stop = options.stop,
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
