@@ -8,6 +8,35 @@ const ChatRequestOptions = requests.ChatRequestOptions;
 const CompletionRequestOptions = requests.CompletionRequestOptions;
 const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
 const Message = core.Message;
+
+fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !struct { system: ?[]const AmazonSystemMessage, messages: []const AmazonMessage } {
+    var system_messages = std.ArrayList(AmazonSystemMessage).init(allocator);
+    var amazon_messages = std.ArrayList(AmazonMessage).init(allocator);
+
+    for (messages) |msg| {
+        if (std.mem.eql(u8, msg.role, "system")) {
+            try system_messages.append(.{ .text = msg.content });
+        } else if (std.mem.eql(u8, msg.role, "user") or std.mem.eql(u8, msg.role, "assistant")) {
+            try amazon_messages.append(.{ .role = msg.role, .content = msg.content });
+        } else {
+            // Ignore other roles or potentially return an error
+        }
+    }
+
+    return .{
+        .system = if (system_messages.items.len > 0) system_messages.toOwnedSlice() else null,
+        .messages = try amazon_messages.toOwnedSlice(),
+    };
+}
+
+const AmazonSystemMessage = struct {
+    text: []const u8,
+};
+
+const AmazonMessage = struct {
+    role: []const u8,
+    content: []const u8,
+};
 const models = @import("../models.zig");
 const ModelInfo = models.ModelInfo;
 const Signer = @import("amazon/auth.zig").Signer;
@@ -71,7 +100,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{
         self.config.base_url,
         options.model,
     }) catch |err| switch (err) {
@@ -83,15 +112,22 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         return Provider.Error.InvalidRequest;
     };
 
+    // Reformat messages
+    const reformatted = try reformatMessages(self.allocator, options.messages);
+    defer {
+        if (reformatted.system) |system| self.allocator.free(system);
+        self.allocator.free(reformatted.messages);
+    }
+
     // Prepare the request payload
     const payload = .{
-        .messages = options.messages,
-        .config = .{
-            .max_tokens = options.max_tokens orelse 256,
-            .temperature = options.temperature orelse 0.7,
-            .top_p = options.top_p orelse 1,
-            .stop_sequences = options.stop,
-        },
+        .anthropic_version = "bedrock-2023-05-31",
+        .system = if (reformatted.system) |system| system else null,
+        .messages = reformatted.messages,
+        .max_tokens = options.max_tokens orelse 256,
+        .temperature = options.temperature orelse 0.7,
+        .top_p = options.top_p orelse 1,
+        .stop_sequences = options.stop,
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
