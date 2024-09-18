@@ -9,19 +9,13 @@ const CompletionRequestOptions = requests.CompletionRequestOptions;
 const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
 const Message = core.Message;
 
-fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !struct { system: ?AmazonSystemMessage, messages: []const AmazonMessage } {
-    var system_message: ?AmazonSystemMessage = null;
+fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !struct { system: ?[]AmazonSystemMessage, messages: []const AmazonMessage } {
+    var system_messages = std.ArrayList(AmazonSystemMessage).init(allocator);
     var amazon_messages = std.ArrayList(AmazonMessage).init(allocator);
 
     for (messages) |msg| {
         if (std.mem.eql(u8, msg.role, "system")) {
-            if (system_message == null) {
-                system_message = .{ .text = msg.content };
-            } else {
-                // Concatenate multiple system messages if present
-                const new_content = try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ system_message.?.text, msg.content });
-                system_message = .{ .text = new_content };
-            }
+            try system_messages.append(.{ .text = msg.content });
         } else if (std.mem.eql(u8, msg.role, "user") or std.mem.eql(u8, msg.role, "assistant")) {
             try amazon_messages.append(.{ .role = msg.role, .content = msg.content });
         } else {
@@ -30,7 +24,7 @@ fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !st
     }
 
     return .{
-        .system = system_message,
+        .system = if (system_messages.items.len > 0) try system_messages.toOwnedSlice() else null,
         .messages = try amazon_messages.toOwnedSlice(),
     };
 }
