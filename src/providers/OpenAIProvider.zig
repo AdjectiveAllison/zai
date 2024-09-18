@@ -165,7 +165,18 @@ fn completion(ctx: *anyopaque, options: CompletionRequestOptions) Provider.Error
         };
         defer self.allocator.free(error_response);
         std.debug.print("Error response: {s}\n", .{error_response});
-        return Provider.Error.ApiError;
+        std.debug.print("Status: {d}\n", .{@intFromEnum(status)});
+        std.debug.print("Request URL: {s}\n", .{uri_string});
+        std.debug.print("Request body: {s}\n", .{body});
+        return switch (status) {
+            .bad_request => Provider.Error.InvalidRequest,
+            .unauthorized => Provider.Error.Unauthorized,
+            .forbidden => Provider.Error.Forbidden,
+            .not_found => Provider.Error.NotFound,
+            .too_many_requests => Provider.Error.RateLimitExceeded,
+            .internal_server_error => Provider.Error.ServerError,
+            else => Provider.Error.ApiError,
+        };
     }
 
     const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
