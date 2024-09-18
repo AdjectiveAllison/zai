@@ -75,12 +75,10 @@ pub const Signer = struct {
         return k_signing;
     }
 
-    pub fn hashSha256(data: []const u8) ![Sha256.digest_length * 2]u8 {
+    pub fn hashSha256(self: *Signer, data: []const u8) ![]u8 {
         var hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(data, &hash, .{});
-        var out: [Sha256.digest_length * 2]u8 = undefined;
-        _ = try std.fmt.bufPrint(&out, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
-        return out;
+        return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
     }
 
     fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
