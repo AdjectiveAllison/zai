@@ -92,12 +92,12 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     }
 
     const payload = .{
-        .anthropic_version = "bedrock-2023-05-31",
-        .max_tokens = options.max_tokens orelse 256,
-        .messages = formatted_messages,
+        .prompt = try std.fmt.allocPrint(self.allocator, "\n\nHuman: {s}\n\nAssistant:", .{options.messages[0].content}),
+        .max_tokens_to_sample = options.max_tokens orelse 256,
         .temperature = options.temperature orelse 0.7,
         .top_p = options.top_p orelse 1,
-        .stop_sequences = if (options.stop) |stop| stop else &[_][]const u8{},
+        .stop_sequences = if (options.stop) |stop| stop else &[_][]const u8{"\n\nHuman:"},
+        .anthropic_version = "bedrock-2023-05-31",
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
@@ -138,6 +138,9 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         };
     };
     defer self.allocator.free(auth_header);
+
+    // Free the prompt after we're done with it
+    defer self.allocator.free(payload.prompt);
 
     var extra_headers = std.ArrayList(std.http.Header).init(self.allocator);
     defer extra_headers.deinit();
