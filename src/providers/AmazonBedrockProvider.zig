@@ -1,5 +1,6 @@
 const std = @import("std");
 const providers = @import("../providers.zig");
+const Sha256 = std.crypto.hash.sha2.Sha256;
 const Provider = providers.Provider;
 const AmazonBedrockConfig = @import("../config.zig").AmazonBedrockConfig;
 const core = @import("../core.zig");
