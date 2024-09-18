@@ -204,11 +204,9 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("Host", host);
     try headers.put("X-Amz-Date", date);
 
-    const payload_hash = auth.Signer.hashSha256(body) catch |err| switch (err) {
-        error.OutOfMemory => return Provider.Error.OutOfMemory,
-        else => return Provider.Error.UnexpectedError,
-    };
-    try headers.put("X-Amz-Content-Sha256", &payload_hash);
+    const payload_hash = try self.signer.hashSha256(body);
+    defer self.allocator.free(payload_hash);
+    try headers.put("X-Amz-Content-Sha256", payload_hash);
 
     const auth_header = self.signer.sign("POST", uri_string, &headers, body) catch |err| {
         return switch (err) {
