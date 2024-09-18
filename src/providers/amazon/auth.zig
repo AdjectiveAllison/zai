@@ -87,7 +87,7 @@ pub const Signer = struct {
     }
 
     // Add a new function to free the result of hashSha256
-    pub fn freeHashSha256(self: *Signer, hash: []u8) void {
+    pub fn freeHashSha256(self: *Signer, hash: []const u8) void {
         self.allocator.free(hash);
     }
 
