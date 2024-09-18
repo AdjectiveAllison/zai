@@ -201,6 +201,12 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         defer self.allocator.free(error_response);
         std.debug.print("Error response: {s}\n", .{error_response});
         std.debug.print("Status: {d}\n", .{@intFromEnum(status)});
+        std.debug.print("Request URL: {s}\n", .{uri_string});
+        std.debug.print("Request body: {s}\n", .{body});
+        std.debug.print("Request headers:\n", .{});
+        for (extra_headers.items) |header| {
+            std.debug.print("{s}: {s}\n", .{header.name, header.value});
+        }
         return error.ApiError;
     }
 
