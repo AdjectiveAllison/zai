@@ -36,21 +36,28 @@ pub const Signer = struct {
         return auth_header;
     }
 
-    fn calculateSignature(self: *Signer, date: []const u8, string_to_sign: []const u8) ![]u8 {
-        const aws4_secret = try std.fmt.allocPrint(self.allocator, "AWS4{s}", .{self.secret_access_key});
-        defer self.allocator.free(aws4_secret);
+    fn calculateSignature(self: *Signer, date: []const u8, string_to_sign: []const u8) ![64]u8 {
+        var aws4_secret: [4 + 256]u8 = undefined;
+        _ = try std.fmt.bufPrint(&aws4_secret, "AWS4{s}", .{self.secret_access_key});
 
-        const k_date = try self.hmacSha256(aws4_secret, date);
-        defer self.allocator.free(k_date);
-        const k_region = try self.hmacSha256(k_date, self.region);
-        defer self.allocator.free(k_region);
-        const k_service = try self.hmacSha256(k_region, "bedrock");
-        defer self.allocator.free(k_service);
-        const k_signing = try self.hmacSha256(k_service, "aws4_request");
-        defer self.allocator.free(k_signing);
+        var k_date: [HmacSha256.mac_length]u8 = undefined;
+        self.hmacSha256(&aws4_secret, date, &k_date);
 
-        const signature = try self.hmacSha256(k_signing, string_to_sign);
-        return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(signature)});
+        var k_region: [HmacSha256.mac_length]u8 = undefined;
+        self.hmacSha256(&k_date, self.region, &k_region);
+
+        var k_service: [HmacSha256.mac_length]u8 = undefined;
+        self.hmacSha256(&k_region, "bedrock", &k_service);
+
+        var k_signing: [HmacSha256.mac_length]u8 = undefined;
+        self.hmacSha256(&k_service, "aws4_request", &k_signing);
+
+        var signature: [HmacSha256.mac_length]u8 = undefined;
+        self.hmacSha256(&k_signing, string_to_sign, &signature);
+
+        var result: [64]u8 = undefined;
+        _ = try std.fmt.bufPrint(&result, "{s}", .{std.fmt.fmtSliceHexLower(&signature)});
+        return result;
     }
 
     fn getSigningKey(self: *Signer, date: []const u8) ![]u8 {
@@ -68,10 +75,10 @@ pub const Signer = struct {
         return k_signing;
     }
 
-    pub fn hashSha256(self: *Signer, data: []const u8) ![]const u8 {
+    pub fn hashSha256(self: *Signer, data: []const u8, out: *[Sha256.digest_length * 2]u8) void {
         var hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(data, &hash, .{});
-        return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
+        _ = std.fmt.bufPrint(out, "{s}", .{std.fmt.fmtSliceHexLower(&hash)}) catch unreachable;
     }
 
     fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
@@ -224,9 +231,7 @@ pub const Signer = struct {
         return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
     }
 
-    fn hmacSha256(self: *Signer, key: []const u8, data: []const u8) ![]u8 {
-        var hmac: [HmacSha256.mac_length]u8 = undefined;
-        HmacSha256.create(&hmac, data, key);
-        return try self.allocator.dupe(u8, &hmac);
+    fn hmacSha256(self: *Signer, key: []const u8, data: []const u8, out: *[HmacSha256.mac_length]u8) void {
+        HmacSha256.create(out, data, key);
     }
 };
