@@ -112,7 +112,7 @@ pub const Signer = struct {
         try canonical_request.append('\n');
 
         // Add payload hash
-        const payload_hash = try self.hashSha256Impl(payload);
+        const payload_hash = try self.hashSha256(payload);
         defer self.allocator.free(payload_hash);
         try canonical_request.appendSlice(payload_hash);
 
