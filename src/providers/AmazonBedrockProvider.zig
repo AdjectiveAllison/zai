@@ -124,10 +124,12 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         .anthropic_version = "bedrock-2023-05-31",
         .system = if (reformatted.system) |system| system else null,
         .messages = reformatted.messages,
-        .max_tokens = options.max_tokens orelse 256,
-        .temperature = options.temperature orelse 0.7,
-        .top_p = options.top_p orelse 1,
-        .stop_sequences = options.stop,
+        .inferenceConfig = .{
+            .max_tokens = options.max_tokens,
+            .temperature = options.temperature,
+            .top_p = options.top_p,
+            .stop_sequences = options.stop,
+        },
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
