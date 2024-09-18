@@ -71,7 +71,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
         self.config.base_url,
         options.model,
     }) catch |err| switch (err) {
@@ -86,10 +86,12 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     // Prepare the request payload
     const payload = .{
         .messages = options.messages,
-        .max_tokens = options.max_tokens orelse 256,
-        .temperature = options.temperature orelse 0.7,
-        .top_p = options.top_p orelse 1,
-        .stop = options.stop,
+        .config = .{
+            .max_tokens = options.max_tokens orelse 256,
+            .temperature = options.temperature orelse 0.7,
+            .top_p = options.top_p orelse 1,
+            .stop_sequences = options.stop,
+        },
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
