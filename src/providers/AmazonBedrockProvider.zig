@@ -9,13 +9,19 @@ const CompletionRequestOptions = requests.CompletionRequestOptions;
 const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
 const Message = core.Message;
 
-fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !struct { system: ?[]const AmazonSystemMessage, messages: []const AmazonMessage } {
-    var system_messages = std.ArrayList(AmazonSystemMessage).init(allocator);
+fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !struct { system: ?AmazonSystemMessage, messages: []const AmazonMessage } {
+    var system_message: ?AmazonSystemMessage = null;
     var amazon_messages = std.ArrayList(AmazonMessage).init(allocator);
 
     for (messages) |msg| {
         if (std.mem.eql(u8, msg.role, "system")) {
-            try system_messages.append(.{ .text = msg.content });
+            if (system_message == null) {
+                system_message = .{ .text = msg.content };
+            } else {
+                // Concatenate multiple system messages if present
+                const new_content = try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ system_message.?.text, msg.content });
+                system_message = .{ .text = new_content };
+            }
         } else if (std.mem.eql(u8, msg.role, "user") or std.mem.eql(u8, msg.role, "assistant")) {
             try amazon_messages.append(.{ .role = msg.role, .content = msg.content });
         } else {
@@ -24,7 +30,7 @@ fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !st
     }
 
     return .{
-        .system = if (system_messages.items.len > 0) system_messages.toOwnedSlice() else null,
+        .system = system_message,
         .messages = try amazon_messages.toOwnedSlice(),
     };
 }
@@ -121,7 +127,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     // Prepare the request payload
     const payload = .{
-        .system = if (reformatted.system) |system| system else null,
+        .system = reformatted.system,
         .messages = reformatted.messages,
         .inferenceConfig = .{
             .max_tokens = options.max_tokens,
