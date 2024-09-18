@@ -205,7 +205,8 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("X-Amz-Date", date);
 
     var payload_hash: [Sha256.digest_length * 2]u8 = undefined;
-    Signer.hashSha256(body, &payload_hash);
+    payload_hash = try self.signer.hashSha256(body);
+    payload_hash = try self.signer.hashSha256(body);
     try headers.put("X-Amz-Content-Sha256", &payload_hash);
 
     const auth_header = self.signer.sign("POST", uri_string, &headers, body) catch |err| {
