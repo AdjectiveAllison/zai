@@ -67,7 +67,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{
         self.config.base_url,
         options.model,
     }) catch |err| switch (err) {
@@ -79,21 +79,31 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         return Provider.Error.InvalidRequest;
     };
 
+    const formatted_messages = try formatMessages(self.allocator, options.messages);
+    defer {
+        for (formatted_messages) |msg| {
+            self.allocator.free(msg.content);
+        }
+        self.allocator.free(formatted_messages);
+    }
+
     const payload = .{
-        .messages = try formatMessages(self.allocator, options.messages),
-        .inferenceConfig = .{
-            .maxTokens = options.max_tokens orelse 256,
-            .temperature = options.temperature orelse 0.7,
-            .topP = options.top_p orelse 1,
-            .stopSequences = options.stop orelse &[_][]const u8{},
-        },
+        .anthropic_version = "bedrock-2023-05-31",
+        .max_tokens = options.max_tokens orelse 256,
+        .messages = formatted_messages,
+        .temperature = options.temperature orelse 0.7,
+        .top_p = options.top_p orelse 1,
+        .stop_sequences = options.stop orelse &[_][]const u8{},
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
         .whitespace = .minified,
         .emit_null_optional_fields = false,
-    }) catch {
-        return Provider.Error.OutOfMemory;
+    }) catch |err| {
+        return switch (err) {
+            error.OutOfMemory => Provider.Error.OutOfMemory,
+            else => Provider.Error.UnexpectedError,
+        };
     };
     defer self.allocator.free(body);
 
@@ -274,11 +284,7 @@ fn getFormattedDate(self: *Self) ![]const u8 {
 
 const AmazonMessage = struct {
     role: []const u8,
-    content: []const AmazonContent,
-};
-
-const AmazonContent = struct {
-    text: []const u8,
+    content: []const u8,
 };
 
 const ChatResponse = struct {
@@ -298,13 +304,16 @@ const ChatResponse = struct {
     latency_ms: ?i64,
 };
 
-fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]const AmazonMessage {
+fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]AmazonMessage {
     var formatted_messages = try allocator.alloc(AmazonMessage, messages.len);
     errdefer allocator.free(formatted_messages);
     for (messages, 0..) |msg, i| {
+        const content = try allocator.alloc(u8, msg.content.len);
+        errdefer allocator.free(content);
+        std.mem.copy(u8, content, msg.content);
         formatted_messages[i] = .{
             .role = msg.role,
-            .content = &[_]AmazonContent{.{ .text = msg.content }},
+            .content = content,
         };
     }
     return formatted_messages;
