@@ -80,26 +80,24 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     };
 
     const payload = .{
-        .prompt = try formatMessages(self.allocator, options.messages),
-        .max_tokens_to_sample = options.max_tokens orelse 256,
-        .temperature = options.temperature orelse 0.7,
-        .top_p = options.top_p orelse 1,
-        .stop_sequences = options.stop orelse &[_][]const u8{},
+        .messages = try formatMessages(self.allocator, options.messages),
+        .inferenceConfig = .{
+            .maxTokens = options.max_tokens orelse 256,
+            .temperature = options.temperature orelse 0.7,
+            .topP = options.top_p orelse 1,
+            .stopSequences = options.stop orelse &[_][]const u8{},
+        },
     };
 
-    fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]const u8 {
-        var prompt = std.ArrayList(u8).init(allocator);
-        defer prompt.deinit();
-
-        for (messages) |msg| {
-            try prompt.appendSlice(msg.role);
-            try prompt.appendSlice(": ");
-            try prompt.appendSlice(msg.content);
-            try prompt.appendSlice("\n\n");
+    fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]const AmazonMessage {
+        var formatted_messages = try allocator.alloc(AmazonMessage, messages.len);
+        for (messages, 0..) |msg, i| {
+            formatted_messages[i] = .{
+                .role = msg.role,
+                .content = &[_]AmazonContent{.{ .text = msg.content }},
+            };
         }
-        try prompt.appendSlice("Assistant: ");
-
-        return prompt.toOwnedSlice();
+        return formatted_messages;
     }
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
@@ -280,6 +278,21 @@ const AmazonMessage = struct {
 
 const AmazonContent = struct {
     text: []const u8,
+};
+
+const ChatResponse = struct {
+    output: struct {
+        message: struct {
+            content: []struct {
+                text: []const u8,
+            },
+        },
+    },
+    usage: ?struct {
+        inputTokens: i64,
+        outputTokens: i64,
+        totalTokens: i64,
+    },
 };
 
 const ChatResponse = struct {
