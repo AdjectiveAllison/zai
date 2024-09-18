@@ -25,10 +25,10 @@ pub const Signer = struct {
         const string_to_sign = try self.createStringToSign(date, canonical_request);
         defer self.allocator.free(string_to_sign);
 
-        const signature = try self.calculateSignature(date[0..8], string_to_sign, null);
+        var signature = try self.calculateSignature(date[0..8], string_to_sign, null);
 
         const date_slice: []const u8 = date[0..8];
-        const auth_header = try self.createAuthorizationHeader(date_slice, signature, headers);
+        const auth_header = try self.createAuthorizationHeader(date_slice, &signature, headers);
 
         // Debug print
         std.debug.print("Authorization Header: {s}\n", .{auth_header});
