@@ -204,7 +204,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("Host", host);
     try headers.put("X-Amz-Date", date);
 
-    const payload_hash = try self.signer.hashSha256(body);
+    const payload_hash = try auth.Signer.hashSha256(body);
     try headers.put("X-Amz-Content-Sha256", &payload_hash);
 
     const auth_header = self.signer.sign("POST", uri_string, &headers, body) catch |err| {

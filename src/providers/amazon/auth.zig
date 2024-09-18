@@ -75,7 +75,7 @@ pub const Signer = struct {
         return k_signing;
     }
 
-    pub fn hashSha256(self: *Signer, data: []const u8) ![Sha256.digest_length * 2]u8 {
+    pub fn hashSha256(data: []const u8) ![Sha256.digest_length * 2]u8 {
         var hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(data, &hash, .{});
         var out: [Sha256.digest_length * 2]u8 = undefined;
