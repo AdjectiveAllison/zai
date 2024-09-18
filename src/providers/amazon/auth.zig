@@ -17,7 +17,7 @@ pub const Signer = struct {
         };
     }
 
-    pub fn sign(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
+    pub fn sign(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]const u8 {
         const date = headers.get("X-Amz-Date") orelse return error.MissingDateHeader;
         const canonical_request = try self.createCanonicalRequest(method, url, headers, payload);
         defer self.allocator.free(canonical_request);
