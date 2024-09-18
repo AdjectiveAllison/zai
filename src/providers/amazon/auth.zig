@@ -17,7 +17,7 @@ pub const Signer = struct {
         };
     }
 
-    pub fn sign(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]const u8 {
+    pub fn sign(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
         const date = headers.get("X-Amz-Date") orelse return error.MissingDateHeader;
         const canonical_request = try self.createCanonicalRequest(method, url, headers, payload);
         defer self.allocator.free(canonical_request);
@@ -29,7 +29,7 @@ pub const Signer = struct {
         defer self.allocator.free(signature);
 
         const date_slice: []const u8 = date[0..8];
-        const auth_header = try self.createAuthorizationHeader(date_slice, &signature, headers);
+        const auth_header = try self.createAuthorizationHeader(date_slice, signature, headers);
 
         // Debug print
         std.debug.print("Authorization Header: {s}\n", .{auth_header});
@@ -166,7 +166,7 @@ pub const Signer = struct {
         return string_to_sign.toOwnedSlice();
     }
 
-    fn createAuthorizationHeader(self: *Signer, date: []const u8, signature: *const [64]u8, headers: *const std.StringHashMap([]const u8)) ![]u8 {
+    fn createAuthorizationHeader(self: *Signer, date: []const u8, signature: []const u8, headers: *const std.StringHashMap([]const u8)) ![]u8 {
         var auth_header = std.ArrayList(u8).init(self.allocator);
         defer auth_header.deinit();
 
