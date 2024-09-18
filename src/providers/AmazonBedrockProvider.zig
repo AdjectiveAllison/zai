@@ -206,11 +206,16 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("X-Amz-Date", date);
 
     const payload_hash = try self.signer.hashSha256(body);
-    defer self.allocator.free(payload_hash);
+    // Remove the defer statement, as hashSha256 now returns an owned slice
     try headers.put("X-Amz-Content-Sha256", payload_hash);
 
     const auth_header = try self.signer.sign("POST", uri_string, &headers, body);
     defer self.allocator.free(auth_header);
+
+    // Add this line to free the content_sha256
+    defer if (headers.get("X-Amz-Content-Sha256")) |content_sha256| {
+        self.signer.freeHashSha256(content_sha256);
+    };
 
     // Free memory allocated by hashSha256 and hmacSha256
     defer {

@@ -86,6 +86,11 @@ pub const Signer = struct {
         return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
     }
 
+    // Add a new function to free the result of hashSha256
+    pub fn freeHashSha256(self: *Signer, hash: []u8) void {
+        self.allocator.free(hash);
+    }
+
     fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
         var canonical_request = std.ArrayList(u8).init(self.allocator);
         defer canonical_request.deinit();
@@ -147,6 +152,7 @@ pub const Signer = struct {
 
         // Add payload hash
         const payload_hash = try self.hashSha256(payload);
+        defer self.freeHashSha256(payload_hash);
         try canonical_request.appendSlice(payload_hash);
 
         return canonical_request.toOwnedSlice();
@@ -165,6 +171,7 @@ pub const Signer = struct {
         try string_to_sign.appendSlice("/bedrock/aws4_request\n");
 
         const request_hash = try self.hashSha256(canonical_request);
+        defer self.freeHashSha256(request_hash);
         try string_to_sign.appendSlice(request_hash);
 
         return string_to_sign.toOwnedSlice();
