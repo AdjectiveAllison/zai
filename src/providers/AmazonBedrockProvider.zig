@@ -83,7 +83,7 @@ allocator: std.mem.Allocator,
 config: AmazonBedrockConfig,
 signer: Signer,
 
-pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) Provider.Error!Provider {
+pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider {
     var self = allocator.create(Self) catch |err| {
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
@@ -209,7 +209,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     defer self.allocator.free(payload_hash);
     try headers.put("X-Amz-Content-Sha256", payload_hash);
 
-    const auth_header = self.signer.sign("POST", uri_string, &headers, body) catch |err| {
+    const auth_header = try self.signer.sign("POST", uri_string, &headers, body);
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
             error.MissingDateHeader => Provider.Error.InvalidRequest,
