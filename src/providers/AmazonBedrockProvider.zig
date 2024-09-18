@@ -210,12 +210,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("X-Amz-Content-Sha256", payload_hash);
 
     const auth_header = try self.signer.sign("POST", uri_string, &headers, body);
-        return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
-            error.MissingDateHeader => Provider.Error.InvalidRequest,
-            else => Provider.Error.UnexpectedError,
-        };
-    };
     defer self.allocator.free(auth_header);
 
     // Free memory allocated by hashSha256 and hmacSha256
