@@ -125,7 +125,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     const payload_hash = self.signer.hashSha256(body) catch |err| {
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
-            else => Provider.Error.UnexpectedError,
         };
     };
     defer self.allocator.free(payload_hash);

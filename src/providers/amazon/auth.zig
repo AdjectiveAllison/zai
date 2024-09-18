@@ -29,10 +29,10 @@ pub const Signer = struct {
         defer self.allocator.free(signature);
 
         const auth_header = try self.createAuthorizationHeader(date[0..8], signature, headers);
-        
+
         // Debug print
         std.debug.print("Authorization Header: {s}\n", .{auth_header});
-        
+
         return auth_header;
     }
 
@@ -57,7 +57,6 @@ pub const Signer = struct {
         return std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)}) catch |err| {
             return switch (err) {
                 error.OutOfMemory => error.OutOfMemory,
-                else => error.UnexpectedError,
             };
         };
     }
