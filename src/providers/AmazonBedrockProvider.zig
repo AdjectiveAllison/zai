@@ -9,7 +9,7 @@ const CompletionRequestOptions = requests.CompletionRequestOptions;
 const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
 const Message = core.Message;
 
-fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !struct { system: ?[]AmazonSystemMessage, messages: []const AmazonMessage } {
+fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !struct { system: ?[]AmazonSystemMessage, messages: []AmazonMessage } {
     var system_messages = std.ArrayList(AmazonSystemMessage).init(allocator);
     var amazon_messages = std.ArrayList(AmazonMessage).init(allocator);
 
