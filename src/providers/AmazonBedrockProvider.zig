@@ -89,18 +89,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         },
     };
 
-    fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]const AmazonMessage {
-        var formatted_messages = try allocator.alloc(AmazonMessage, messages.len);
-        for (messages, 0..) |msg, i| {
-            formatted_messages[i] = .{
-                .role = msg.role,
-                .content = &[_]AmazonContent{.{ .text = msg.content }},
-            };
-        }
-        return formatted_messages;
-    }
-
-    const body = std.json.stringifyAlloc(self.allocator, payload, .{
+    const body = try std.json.stringifyAlloc(self.allocator, payload, .{
         .whitespace = .minified,
         .emit_null_optional_fields = false,
     }) catch |err| switch (err) {
@@ -301,6 +290,18 @@ const ChatResponse = struct {
     usage: ?TokenUsage,
     latency_ms: ?i64,
 };
+
+fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]const AmazonMessage {
+    var formatted_messages = try allocator.alloc(AmazonMessage, messages.len);
+    errdefer allocator.free(formatted_messages);
+    for (messages, 0..) |msg, i| {
+        formatted_messages[i] = .{
+            .role = msg.role,
+            .content = &[_]AmazonContent{.{ .text = msg.content }},
+        };
+    }
+    return formatted_messages;
+}
 
 const TokenUsage = struct {
     prompt_tokens: i64,
