@@ -308,9 +308,8 @@ fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]Am
     var formatted_messages = try allocator.alloc(AmazonMessage, messages.len);
     errdefer allocator.free(formatted_messages);
     for (messages, 0..) |msg, i| {
-        const content = try allocator.alloc(u8, msg.content.len);
+        const content = try allocator.dupe(u8, msg.content);
         errdefer allocator.free(content);
-        std.mem.copy(u8, content, msg.content);
         formatted_messages[i] = .{
             .role = msg.role,
             .content = content,
