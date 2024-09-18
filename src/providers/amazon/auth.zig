@@ -41,19 +41,19 @@ pub const Signer = struct {
         _ = try std.fmt.bufPrint(&aws4_secret, "AWS4{s}", .{self.secret_access_key});
 
         var k_date: [HmacSha256.mac_length]u8 = undefined;
-        self.hmacSha256(&aws4_secret, date, &k_date);
+        hmacSha256(&aws4_secret, date, &k_date);
 
         var k_region: [HmacSha256.mac_length]u8 = undefined;
-        self.hmacSha256(&k_date, self.region, &k_region);
+        hmacSha256(&k_date, self.region, &k_region);
 
         var k_service: [HmacSha256.mac_length]u8 = undefined;
-        self.hmacSha256(&k_region, "bedrock", &k_service);
+        hmacSha256(&k_region, "bedrock", &k_service);
 
         var k_signing: [HmacSha256.mac_length]u8 = undefined;
-        self.hmacSha256(&k_service, "aws4_request", &k_signing);
+        hmacSha256(&k_service, "aws4_request", &k_signing);
 
         var signature: [HmacSha256.mac_length]u8 = undefined;
-        self.hmacSha256(&k_signing, string_to_sign, &signature);
+        hmacSha256(&k_signing, string_to_sign, &signature);
 
         var result: [64]u8 = undefined;
         _ = try std.fmt.bufPrint(&result, "{s}", .{std.fmt.fmtSliceHexLower(&signature)});
@@ -75,7 +75,7 @@ pub const Signer = struct {
         return k_signing;
     }
 
-    pub fn hashSha256(self: *Signer, data: []const u8, out: *[Sha256.digest_length * 2]u8) void {
+    pub fn hashSha256(data: []const u8, out: *[Sha256.digest_length * 2]u8) void {
         var hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(data, &hash, .{});
         _ = std.fmt.bufPrint(out, "{s}", .{std.fmt.fmtSliceHexLower(&hash)}) catch unreachable;
@@ -231,7 +231,7 @@ pub const Signer = struct {
         return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
     }
 
-    fn hmacSha256(self: *Signer, key: []const u8, data: []const u8, out: *[HmacSha256.mac_length]u8) void {
+    fn hmacSha256(key: []const u8, data: []const u8, out: *[HmacSha256.mac_length]u8) void {
         HmacSha256.create(out, data, key);
     }
 };
