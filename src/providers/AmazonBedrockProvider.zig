@@ -67,7 +67,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     var response_header_buffer: [2048]u8 = undefined;
 
-    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/invoke", .{
+    const uri_string = std.fmt.allocPrint(self.allocator, "{s}/model/{s}/converse", .{
         self.config.base_url,
         options.model,
     }) catch |err| switch (err) {
@@ -88,12 +88,13 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     }
 
     const payload = .{
-        .anthropic_version = "bedrock-2023-05-31",
-        .max_tokens = options.max_tokens orelse 256,
         .messages = formatted_messages,
-        .temperature = options.temperature orelse 0.7,
-        .top_p = options.top_p orelse 1,
-        .stop_sequences = options.stop orelse &[_][]const u8{},
+        .inferenceConfig = .{
+            .maxTokens = options.max_tokens orelse 256,
+            .temperature = options.temperature orelse 0.7,
+            .topP = options.top_p orelse 1,
+            .stopSequences = options.stop orelse &[_][]const u8{},
+        },
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
@@ -229,10 +230,12 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     defer parsed.deinit();
 
     // Extract the content from the response
-    const output = parsed.value.object.get("output") orelse return Provider.Error.ApiError;
-    const message = output.object.get("message") orelse return Provider.Error.ApiError;
-    const content = message.object.get("content") orelse return Provider.Error.ApiError;
-
+    const messages = parsed.value.object.get("messages") orelse return Provider.Error.ApiError;
+    if (messages.array.items.len == 0) return Provider.Error.ApiError;
+    
+    const last_message = messages.array.items[messages.array.items.len - 1];
+    const content = last_message.object.get("content") orelse return Provider.Error.ApiError;
+    
     if (content.array.items.len == 0) return Provider.Error.ApiError;
     const text = content.array.items[0].object.get("text") orelse return Provider.Error.ApiError;
 
