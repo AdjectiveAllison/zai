@@ -219,6 +219,13 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     };
     defer self.allocator.free(auth_header);
 
+    // Free memory allocated by hashSha256 and hmacSha256
+    defer {
+        if (headers.get("X-Amz-Content-Sha256")) |content_sha256| {
+            self.allocator.free(content_sha256);
+        }
+    }
+
     // Free the prompt after we're done with it
 
     var extra_headers = std.ArrayList(std.http.Header).init(self.allocator);
