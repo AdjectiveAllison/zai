@@ -28,7 +28,8 @@ pub const Signer = struct {
         const signature = try self.calculateSignature(date[0..8], string_to_sign);
         defer self.allocator.free(signature);
 
-        const auth_header = try self.createAuthorizationHeader(date[0..8], signature, headers);
+        const date_slice: []const u8 = date[0..8];
+        const auth_header = try self.createAuthorizationHeader(date_slice, signature, headers);
 
         // Debug print
         std.debug.print("Authorization Header: {s}\n", .{auth_header});

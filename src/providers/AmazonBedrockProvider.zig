@@ -195,8 +195,9 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     const host = try std.fmt.allocPrint(self.allocator, "bedrock-runtime.{s}.amazonaws.com", .{self.config.region});
     defer self.allocator.free(host);
 
-    const date = try self.signer.getFormattedDate();
-    defer self.allocator.free(date);
+    const full_date = try self.signer.getFormattedDate();
+    defer self.allocator.free(full_date);
+    const date: []const u8 = full_date[0..8];
 
     var headers = std.StringHashMap([]const u8).init(self.allocator);
     defer headers.deinit();
