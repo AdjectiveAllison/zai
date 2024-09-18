@@ -282,12 +282,7 @@ const ChatResponse = struct {
         outputTokens: i64,
         totalTokens: i64,
     },
-};
-
-const ChatResponse = struct {
-    content: []const u8,
     stop_reason: ?[]const u8,
-    usage: ?TokenUsage,
     latency_ms: ?i64,
 };
 
@@ -304,7 +299,7 @@ fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]co
 }
 
 const TokenUsage = struct {
-    prompt_tokens: i64,
-    completion_tokens: i64,
-    total_tokens: i64,
+    inputTokens: i64,
+    outputTokens: i64,
+    totalTokens: i64,
 };
