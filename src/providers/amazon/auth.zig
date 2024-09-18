@@ -54,7 +54,7 @@ pub const Signer = struct {
     pub fn hashSha256(self: *Signer, data: []const u8) ![]u8 {
         var hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(data, &hash, .{});
-        var result = try self.allocator.alloc(u8, hash.len * 2);
+        const result = try self.allocator.alloc(u8, hash.len * 2);
         _ = try std.fmt.bufPrint(result, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
         return result;
     }
