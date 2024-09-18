@@ -80,7 +80,7 @@ pub const Signer = struct {
         Sha256.hash(data, &hash, .{});
         var out: [Sha256.digest_length * 2]u8 = undefined;
         _ = try std.fmt.bufPrint(&out, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
-        return self.allocator.dupe(u8, &out);
+        return out;
     }
 
     fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
