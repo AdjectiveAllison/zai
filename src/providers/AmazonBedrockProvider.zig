@@ -113,7 +113,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
             error.NoSpaceLeft => Provider.Error.OutOfMemory,
-            else => Provider.Error.UnexpectedError,
         };
     };
     defer self.allocator.free(payload_hash);
