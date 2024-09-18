@@ -88,13 +88,12 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     }
 
     const payload = .{
+        .anthropic_version = "bedrock-2023-05-31",
+        .max_tokens = options.max_tokens orelse 256,
         .messages = formatted_messages,
-        .inferenceConfig = .{
-            .maxTokens = options.max_tokens orelse 256,
-            .temperature = options.temperature orelse 0.7,
-            .topP = options.top_p orelse 1,
-            .stopSequences = options.stop orelse &[_][]const u8{},
-        },
+        .temperature = options.temperature orelse 0.7,
+        .top_p = options.top_p orelse 1,
+        .stop_sequences = options.stop orelse &[_][]const u8{},
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
