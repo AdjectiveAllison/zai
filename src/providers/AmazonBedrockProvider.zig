@@ -97,7 +97,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         .messages = formatted_messages,
         .temperature = options.temperature orelse 0.7,
         .top_p = options.top_p orelse 1,
-        .stop_sequences = options.stop orelse &[_][]const u8{},
+        .stop_sequences = if (options.stop) |stop| stop else &[_][]const u8{},
     };
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{

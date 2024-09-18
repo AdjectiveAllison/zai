@@ -41,7 +41,10 @@ pub fn main() !void {
         .stream = false,
     };
 
-    const chat_response = try provider.chat(chat_options);
+    const chat_response = provider.chat(chat_options) catch |err| {
+        std.debug.print("Error in chat: {}\n", .{err});
+        return err;
+    };
     defer allocator.free(chat_response);
     std.debug.print("Chat response: {s}\n", .{chat_response});
 
