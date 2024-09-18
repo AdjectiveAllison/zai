@@ -74,7 +74,8 @@ const ToolUseBlock = struct {
 };
 const models = @import("../models.zig");
 const ModelInfo = models.ModelInfo;
-const Signer = @import("amazon/auth.zig").Signer;
+const auth = @import("amazon/auth.zig");
+const Signer = auth.Signer;
 
 const Self = @This();
 
@@ -204,7 +205,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("X-Amz-Date", date);
 
     var payload_hash: [Sha256.digest_length * 2]u8 = undefined;
-    self.signer.hashSha256(body, &payload_hash);
+    Signer.hashSha256(body, &payload_hash);
     try headers.put("X-Amz-Content-Sha256", payload_hash);
 
     const auth_header = self.signer.sign("POST", uri_string, &headers, body) catch |err| {
