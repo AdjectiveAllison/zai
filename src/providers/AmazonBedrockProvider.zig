@@ -209,6 +209,10 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         for (extra_headers.items) |header| {
             std.debug.print("{s}: {s}\n", .{ header.name, header.value });
         }
+        std.debug.print("Response headers:\n", .{});
+        for (req.response.headers.list.items) |header| {
+            std.debug.print("{s}: {s}\n", .{ header.name, header.value });
+        }
         return switch (status) {
             .bad_request => Provider.Error.InvalidRequest,
             .unauthorized => Provider.Error.Unauthorized,

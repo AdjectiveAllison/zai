@@ -36,6 +36,23 @@ pub const Signer = struct {
         return auth_header;
     }
 
+    fn calculateSignature(self: *Signer, date: []const u8, string_to_sign: []const u8) ![]u8 {
+        const aws4_secret = try std.fmt.allocPrint(self.allocator, "AWS4{s}", .{self.secret_access_key});
+        defer self.allocator.free(aws4_secret);
+
+        const k_date = try self.hmacSha256(aws4_secret, date);
+        defer self.allocator.free(k_date);
+        const k_region = try self.hmacSha256(k_date, self.region);
+        defer self.allocator.free(k_region);
+        const k_service = try self.hmacSha256(k_region, "bedrock");
+        defer self.allocator.free(k_service);
+        const k_signing = try self.hmacSha256(k_service, "aws4_request");
+        defer self.allocator.free(k_signing);
+
+        const signature = try self.hmacSha256(k_signing, string_to_sign);
+        return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(signature)});
+    }
+
     fn getSigningKey(self: *Signer, date: []const u8) ![]u8 {
         var signing_key = std.ArrayList(u8).init(self.allocator);
         defer signing_key.deinit();
