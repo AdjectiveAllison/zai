@@ -89,11 +89,11 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         },
     };
 
-    const body = try std.json.stringifyAlloc(self.allocator, payload, .{
+    const body = std.json.stringifyAlloc(self.allocator, payload, .{
         .whitespace = .minified,
         .emit_null_optional_fields = false,
-    }) catch |err| switch (err) {
-        error.OutOfMemory => return Provider.Error.OutOfMemory,
+    }) catch {
+        return Provider.Error.OutOfMemory;
     };
     defer self.allocator.free(body);
 
