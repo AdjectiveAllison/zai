@@ -121,7 +121,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     // Prepare the request payload
     const payload = .{
-        .anthropic_version = "bedrock-2023-05-31",
         .system = if (reformatted.system) |system| system else null,
         .messages = reformatted.messages,
         .inferenceConfig = .{
