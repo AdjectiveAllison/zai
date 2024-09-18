@@ -32,6 +32,7 @@ pub const Provider = struct {
         NotFound,
         RateLimitExceeded,
         ServerError,
+        NoSpaceLeft,
     };
 
     pub fn init(allocator: std.mem.Allocator, provider_config: config.ProviderConfig) !Provider {

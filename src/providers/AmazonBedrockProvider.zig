@@ -2,6 +2,7 @@ const std = @import("std");
 const providers = @import("../providers.zig");
 const Sha256 = std.crypto.hash.sha2.Sha256;
 const Provider = providers.Provider;
+const ZaiError = core.ZaiError;
 const AmazonBedrockConfig = @import("../config.zig").AmazonBedrockConfig;
 const core = @import("../core.zig");
 const requests = @import("../requests.zig");
@@ -204,7 +205,10 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     try headers.put("Host", host);
     try headers.put("X-Amz-Date", date);
 
-    const payload_hash = try auth.Signer.hashSha256(body);
+    const payload_hash = auth.Signer.hashSha256(body) catch |err| switch (err) {
+        error.NoSpaceLeft => return ZaiError.OutOfMemory,
+        else => |e| return e,
+    };
     try headers.put("X-Amz-Content-Sha256", &payload_hash);
 
     const auth_header = self.signer.sign("POST", uri_string, &headers, body) catch |err| {
