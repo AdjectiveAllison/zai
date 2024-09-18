@@ -75,10 +75,12 @@ pub const Signer = struct {
         return k_signing;
     }
 
-    pub fn hashSha256(data: []const u8, out: *[Sha256.digest_length * 2]u8) void {
+    pub fn hashSha256(self: *Signer, data: []const u8) ![Sha256.digest_length * 2]u8 {
         var hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(data, &hash, .{});
-        _ = std.fmt.bufPrint(out, "{s}", .{std.fmt.fmtSliceHexLower(&hash)}) catch unreachable;
+        var out: [Sha256.digest_length * 2]u8 = undefined;
+        _ = try std.fmt.bufPrint(&out, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
+        return out;
     }
 
     fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {
@@ -141,8 +143,7 @@ pub const Signer = struct {
         try canonical_request.append('\n');
 
         // Add payload hash
-        const payload_hash = try self.hashSha256(payload);
-        defer self.allocator.free(payload_hash);
+        var payload_hash = try self.hashSha256(payload);
         try canonical_request.appendSlice(payload_hash);
 
         return canonical_request.toOwnedSlice();
