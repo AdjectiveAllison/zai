@@ -129,7 +129,6 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     const auth_header = self.signer.sign("POST", uri_string, &headers, body) catch |err| {
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
-            error.NoSpaceLeft => Provider.Error.OutOfMemory,
             error.MissingDateHeader => Provider.Error.InvalidRequest,
             else => Provider.Error.UnexpectedError,
         };
