@@ -209,7 +209,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     defer self.allocator.free(payload_hash);
     try headers.put("X-Amz-Content-Sha256", payload_hash);
 
-    const auth_header = self.signer.sign("POST", uri_string, &headers, body.items) catch |err| {
+    const auth_header = self.signer.sign("POST", uri_string, &headers, body) catch |err| {
         return switch (err) {
             error.OutOfMemory => Provider.Error.OutOfMemory,
             error.MissingDateHeader => Provider.Error.InvalidRequest,
