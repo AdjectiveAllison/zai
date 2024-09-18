@@ -124,7 +124,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 
     const payload_hash = self.signer.hashSha256(body) catch |err| {
         return switch (err) {
-            error.OutOfMemory => Provider.Error.OutOfMemory,
+            error.OutOfMemory, error.NoSpaceLeft => Provider.Error.OutOfMemory,
         };
     };
     defer self.allocator.free(payload_hash);
@@ -207,7 +207,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         std.debug.print("Request body: {s}\n", .{body});
         std.debug.print("Request headers:\n", .{});
         for (extra_headers.items) |header| {
-            std.debug.print("{s}: {s}\n", .{header.name, header.value});
+            std.debug.print("{s}: {s}\n", .{ header.name, header.value });
         }
         return error.ApiError;
     }
@@ -235,10 +235,10 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     // Extract the content from the response
     const messages = parsed.value.object.get("messages") orelse return Provider.Error.ApiError;
     if (messages.array.items.len == 0) return Provider.Error.ApiError;
-    
+
     const last_message = messages.array.items[messages.array.items.len - 1];
     const content = last_message.object.get("content") orelse return Provider.Error.ApiError;
-    
+
     if (content.array.items.len == 0) return Provider.Error.ApiError;
     const text = content.array.items[0].object.get("text") orelse return Provider.Error.ApiError;
 
