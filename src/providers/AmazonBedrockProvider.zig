@@ -15,10 +15,10 @@ fn reformatMessages(allocator: std.mem.Allocator, messages: []const Message) !st
 
     for (messages) |msg| {
         if (std.mem.eql(u8, msg.role, "system")) {
-            try system_messages.append(.{ .text = msg.content });
+            try system_messages.append(.{ .text = try allocator.dupe(u8, msg.content) });
         } else if (std.mem.eql(u8, msg.role, "user") or std.mem.eql(u8, msg.role, "assistant")) {
             var content_blocks = std.ArrayList(ContentBlock).init(allocator);
-            try content_blocks.append(.{ .text = msg.content });
+            try content_blocks.append(.{ .text = try allocator.dupe(u8, msg.content) });
             try amazon_messages.append(.{
                 .role = msg.role,
                 .content = try content_blocks.toOwnedSlice(),
@@ -149,7 +149,22 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     // Reformat messages
     const reformatted = try reformatMessages(self.allocator, options.messages);
     defer {
-        if (reformatted.system) |system| self.allocator.free(system);
+        if (reformatted.system) |system| {
+            for (system) |msg| {
+                self.allocator.free(msg.text);
+            }
+            self.allocator.free(system);
+        }
+        for (reformatted.messages) |msg| {
+            for (msg.content) |content| {
+                switch (content) {
+                    .text => |text| self.allocator.free(text),
+                    // Add cases for other content types if needed
+                    else => {},
+                }
+            }
+            self.allocator.free(msg.content);
+        }
         self.allocator.free(reformatted.messages);
     }
 

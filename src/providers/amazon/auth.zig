@@ -227,6 +227,6 @@ pub const Signer = struct {
     fn hmacSha256(self: *Signer, key: []const u8, data: []const u8) ![]u8 {
         var hmac: [HmacSha256.mac_length]u8 = undefined;
         HmacSha256.create(&hmac, data, key);
-        return self.allocator.dupe(u8, &hmac);
+        return try self.allocator.dupe(u8, &hmac);
     }
 };
