@@ -210,8 +210,14 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
             std.debug.print("{s}: {s}\n", .{ header.name, header.value });
         }
         std.debug.print("Response headers:\n", .{});
-        var header_it = req.response.headers.iterator();
-        while (header_it.next()) |header| {
+        var header_buffer: [1024]u8 = undefined;
+        var header_list = std.ArrayList(std.http.Header).init(self.allocator);
+        defer header_list.deinit();
+        req.response.iterateHeaders(&header_buffer, &header_list) catch |err| {
+            std.debug.print("Error iterating headers: {}\n", .{err});
+            return Provider.Error.UnexpectedError;
+        };
+        for (header_list.items) |header| {
             std.debug.print("{s}: {s}\n", .{ header.name, header.value });
         }
         return switch (status) {
