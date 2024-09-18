@@ -25,8 +25,8 @@ pub const Signer = struct {
         const string_to_sign = try self.createStringToSign(date, canonical_request);
         defer self.allocator.free(string_to_sign);
 
-        const signature = try self.calculateSignature(date[0..8], string_to_sign);
-        defer self.allocator.free(signature);
+        var signature: [64]u8 = undefined;
+        try self.calculateSignature(date[0..8], string_to_sign, &signature);
 
         const date_slice: []const u8 = date[0..8];
         const auth_header = try self.createAuthorizationHeader(date_slice, &signature, headers);
@@ -35,6 +35,28 @@ pub const Signer = struct {
         std.debug.print("Authorization Header: {s}\n", .{auth_header});
 
         return auth_header;
+    }
+
+    fn calculateSignature(self: *Signer, date: []const u8, string_to_sign: []const u8, signature: *[64]u8) !void {
+        var aws4_secret: [4 + 256]u8 = undefined;
+        _ = try std.fmt.bufPrint(&aws4_secret, "AWS4{s}", .{self.secret_access_key});
+
+        var k_date: [HmacSha256.mac_length]u8 = undefined;
+        hmacSha256(&aws4_secret, date, &k_date);
+
+        var k_region: [HmacSha256.mac_length]u8 = undefined;
+        hmacSha256(&k_date, self.region, &k_region);
+
+        var k_service: [HmacSha256.mac_length]u8 = undefined;
+        hmacSha256(&k_region, "bedrock", &k_service);
+
+        var k_signing: [HmacSha256.mac_length]u8 = undefined;
+        hmacSha256(&k_service, "aws4_request", &k_signing);
+
+        var sig: [HmacSha256.mac_length]u8 = undefined;
+        hmacSha256(&k_signing, string_to_sign, &sig);
+
+        _ = try std.fmt.bufPrint(signature, "{s}", .{std.fmt.fmtSliceHexLower(&sig)});
     }
 
     fn calculateSignature(self: *Signer, date: []const u8, string_to_sign: []const u8) ![64]u8 {
