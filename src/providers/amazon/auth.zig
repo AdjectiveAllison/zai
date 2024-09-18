@@ -53,7 +53,9 @@ pub const Signer = struct {
     fn hashSha256Impl(self: *Signer, data: []const u8) ![]u8 {
         var hash: [Sha256.digest_length]u8 = undefined;
         Sha256.hash(data, &hash, .{});
-        return try std.fmt.allocPrint(self.allocator, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
+        var result = try self.allocator.alloc(u8, hash.len * 2);
+        _ = try std.fmt.bufPrint(result, "{s}", .{std.fmt.fmtSliceHexLower(&hash)});
+        return result;
     }
 
     fn createCanonicalRequest(self: *Signer, method: []const u8, url: []const u8, headers: *const std.StringHashMap([]const u8), payload: []const u8) ![]u8 {

@@ -80,18 +80,27 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     };
 
     const payload = .{
-        .messages = options.messages,
-        .system = &[_]AmazonMessage{.{
-            .role = "system",
-            .content = &[_]AmazonContent{.{ .text = "You are a helpful AI assistant." }},
-        }},
-        .inferenceConfig = .{
-            .maxTokens = options.max_tokens,
-            .temperature = options.temperature,
-            .topP = options.top_p,
-            .stopSequences = options.stop,
-        },
+        .prompt = try formatMessages(self.allocator, options.messages),
+        .max_tokens_to_sample = options.max_tokens orelse 256,
+        .temperature = options.temperature orelse 0.7,
+        .top_p = options.top_p orelse 1,
+        .stop_sequences = options.stop orelse &[_][]const u8{},
     };
+
+    fn formatMessages(allocator: std.mem.Allocator, messages: []const Message) ![]const u8 {
+        var prompt = std.ArrayList(u8).init(allocator);
+        defer prompt.deinit();
+
+        for (messages) |msg| {
+            try prompt.appendSlice(msg.role);
+            try prompt.appendSlice(": ");
+            try prompt.appendSlice(msg.content);
+            try prompt.appendSlice("\n\n");
+        }
+        try prompt.appendSlice("Assistant: ");
+
+        return prompt.toOwnedSlice();
+    }
 
     const body = std.json.stringifyAlloc(self.allocator, payload, .{
         .whitespace = .minified,
@@ -184,7 +193,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
         defer self.allocator.free(error_response);
         std.debug.print("Error response: {s}\n", .{error_response});
         std.debug.print("Status: {d}\n", .{@intFromEnum(status)});
-        return Provider.Error.ApiError;
+        return error.ApiError;
     }
 
     const response = req.reader().readAllAlloc(self.allocator, 3276800) catch |err| {
