@@ -2,6 +2,6 @@ zig-cache/
 zig-out/
 .zig-cache/
 
-aider*
+.aider*
 
 cli/
