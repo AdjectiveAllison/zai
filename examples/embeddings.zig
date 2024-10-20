@@ -8,12 +8,12 @@ pub fn main() !void {
     defer std.debug.assert(gpa_state.deinit() == .ok);
     const gpa = gpa_state.allocator();
 
-    const api_key = try std.process.getEnvVarOwned(gpa, "OCTOAI_TOKEN");
+    const api_key = try std.process.getEnvVarOwned(gpa, "TOGETHER_API_KEY");
     defer gpa.free(api_key);
 
     const provider_config = zai.ProviderConfig{ .OpenAI = .{
         .api_key = api_key,
-        .base_url = "https://text.octoai.run/v1",
+        .base_url = "https://api.together.xyz/v1",
     } };
     var provider = try zai.init(gpa, provider_config);
     defer provider.deinit();
@@ -21,7 +21,7 @@ pub fn main() !void {
     const input_text = "Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.";
 
     const embedding_options = zai.EmbeddingRequestOptions{
-        .model = "thenlper/gte-large",
+        .model = "BAAI/bge-large-en-v1.5",
         .input = input_text,
     };
 
