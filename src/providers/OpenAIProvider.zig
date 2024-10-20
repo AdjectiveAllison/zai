@@ -817,8 +817,13 @@ fn createEmbedding(ctx: *anyopaque, options: EmbeddingRequestOptions) Provider.E
     const embedding = data.array.items[0].object.get("embedding") orelse return Provider.Error.ApiError;
     var result = try self.allocator.alloc(f32, embedding.array.items.len);
     for (embedding.array.items, 0..) |item, i| {
-        // TODO: Why do we need to do casting here? Why does the json think we are having f64 returned? Do we need to do this better to avoid precision loss?
-        result[i] = @floatCast(item.float);
+        switch (item) {
+            .integer => result[i] = @floatFromInt(item.integer),
+            .float => result[i] = @floatCast(item.float),
+            else => unreachable,
+        }
+        // TODO: I would prefer to be able to consistently just get f32 as a response from embedding.
+        // result[i] = @floatCast(item.float);
     }
 
     return result;
