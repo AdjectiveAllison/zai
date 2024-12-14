@@ -44,7 +44,6 @@ pub const Provider = struct {
         const Writer = std.io.GenericWriter(@TypeOf(writer), Error, struct {
             fn write(ctx: @TypeOf(writer), bytes: []const u8) Error!usize {
                 return ctx.write(bytes) catch |err| switch (err) {
-                    error.ConnectionResetByPeer => Error.NetworkError,
                     else => Error.UnexpectedError,
                 };
             }
@@ -61,7 +60,6 @@ pub const Provider = struct {
         const Writer = std.io.GenericWriter(@TypeOf(writer), Error, struct {
             fn write(ctx: @TypeOf(writer), bytes: []const u8) Error!usize {
                 return ctx.write(bytes) catch |err| switch (err) {
-                    error.ConnectionResetByPeer => Error.NetworkError,
                     else => Error.UnexpectedError,
                 };
             }

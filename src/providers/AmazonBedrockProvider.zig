@@ -69,22 +69,6 @@ pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider
     };
 }
 
-fn getAuthorizationHeader(self: *Self) ![]const u8 {
-    // TODO: Lots of aws authentication logic
-    _ = self;
-    return "";
-    // self.authorization_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.config.api_key});
-}
-
-fn getExtraHeaders(self: *Self) ![]const std.http.Header {
-    var headers = std.ArrayList(std.http.Header).init(self.allocator);
-    defer headers.deinit();
-
-    try headers.append(.{ .name = "User-Agent", .value = "zig-ai/0.1.0" });
-    try headers.append(.{ .name = "Content-Type", .value = "application/json" });
-    return headers.toOwnedSlice();
-}
-
 fn deinit(ctx: *anyopaque) void {
     const self: *Self = @ptrCast(@alignCast(ctx));
     // self.allocator.free(self.authorization_header);
