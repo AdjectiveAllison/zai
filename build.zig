@@ -14,42 +14,51 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // Example section
-    const chat = b.addExecutable(.{
-        .name = "chat",
-        .root_source_file = b.path("examples/chat.zig"),
+    // OpenAI-compatible chat example (TogetherAI)
+    const chat_openai = b.addExecutable(.{
+        .name = "chat-openai",
+        .root_source_file = b.path("examples/chat_openai.zig"),
         .target = target,
         .optimize = optimize,
     });
+    chat_openai.root_module.addImport("zai", zai_mod);
+    const build_chat_openai = b.addInstallArtifact(chat_openai, .{});
+    const build_chat_openai_step = b.step("chat-openai", "Build the OpenAI-compatible chat example (OpenRouter)");
+    build_chat_openai_step.dependOn(&build_chat_openai.step);
 
-    chat.root_module.addImport("zai", zai_mod);
-    const build_chat = b.addInstallArtifact(chat, .{});
-    const build_chat_step = b.step("chat", "build the chat example.");
-    build_chat_step.dependOn(&build_chat.step);
+    // Amazon Bedrock chat example
+    const chat_bedrock = b.addExecutable(.{
+        .name = "chat-bedrock",
+        .root_source_file = b.path("examples/chat_bedrock.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    chat_bedrock.root_module.addImport("zai", zai_mod);
+    const build_chat_bedrock = b.addInstallArtifact(chat_bedrock, .{});
+    const build_chat_bedrock_step = b.step("chat-bedrock", "Build the Amazon Bedrock chat example (Streaming)");
+    build_chat_bedrock_step.dependOn(&build_chat_bedrock.step);
 
+    // Completion example
     const completion = b.addExecutable(.{
         .name = "completion",
         .root_source_file = b.path("examples/completion.zig"),
         .target = target,
         .optimize = optimize,
     });
-
     completion.root_module.addImport("zai", zai_mod);
     const build_completion = b.addInstallArtifact(completion, .{});
-    const build_completion_step = b.step("completion", "build the completion example.");
+    const build_completion_step = b.step("completion", "Build the completion example");
     build_completion_step.dependOn(&build_completion.step);
 
+    // Embeddings example
     const embeddings = b.addExecutable(.{
         .name = "embeddings",
         .root_source_file = b.path("examples/embeddings.zig"),
         .target = target,
         .optimize = optimize,
     });
-
     embeddings.root_module.addImport("zai", zai_mod);
     const build_embeddings = b.addInstallArtifact(embeddings, .{});
-    const build_embeddings_step = b.step("embeddings", "build the embeddings example.");
+    const build_embeddings_step = b.step("embeddings", "Build the embeddings example");
     build_embeddings_step.dependOn(&build_embeddings.step);
-
-    // TODO: add tests
 }
