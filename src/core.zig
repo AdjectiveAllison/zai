@@ -15,6 +15,7 @@ pub const ProviderType = enum {
     Anthropic,
     GoogleVertex,
     AmazonBedrock,
+    Local,
 };
 
 pub const Message = struct {

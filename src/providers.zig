@@ -29,6 +29,8 @@ pub const Provider = struct {
             .Anthropic => @panic("Anthropic provider not implemented"),
             .GoogleVertex => @panic("Google Vertex provider not implemented"),
             .AmazonBedrock => |amazon_config| AmazonBedrockProvider.init(allocator, amazon_config),
+            // Will use zml for this once it's setup: tracking issue: https://github.com/zml/zml/issues/67
+            .Local => @panic("Local provider not implemented"),
         };
     }
 

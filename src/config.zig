@@ -6,6 +6,7 @@ pub const ProviderConfig = union(core.ProviderType) {
     Anthropic: AnthropicConfig,
     GoogleVertex: GoogleVertexConfig,
     AmazonBedrock: AmazonBedrockConfig,
+    Local: LocalConfig,
 };
 
 pub const OpenAIConfig = struct {
@@ -29,6 +30,11 @@ pub const AmazonBedrockConfig = struct {
     access_key_id: []const u8,
     secret_access_key: []const u8,
     region: []const u8,
+};
+
+pub const LocalConfig = struct {
+    // https://github.com/zml/zml?tab=readme-ov-file#running-models-on-gpu--tpu
+    runtime: []const u8,
 };
 
 pub const ConfigManager = struct {
