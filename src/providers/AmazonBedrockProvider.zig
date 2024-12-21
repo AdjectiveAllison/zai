@@ -8,8 +8,6 @@ const ChatRequestOptions = requests.ChatRequestOptions;
 const CompletionRequestOptions = requests.CompletionRequestOptions;
 const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
 const Message = core.Message;
-const models = @import("../models.zig");
-const ModelInfo = models.ModelInfo;
 const auth = @import("amazon/auth.zig");
 
 allocator: std.mem.Allocator,
@@ -63,8 +61,6 @@ pub fn init(allocator: std.mem.Allocator, config: AmazonBedrockConfig) !Provider
             .chat = chat,
             .chatStream = chatStream,
             .createEmbedding = createEmbedding,
-            .getModelInfo = getModelInfo,
-            .getModels = getModels,
         },
     };
 }
@@ -553,16 +549,5 @@ fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWr
 fn createEmbedding(ctx: *anyopaque, options: requests.EmbeddingRequestOptions) Provider.Error![]f32 {
     _ = ctx;
     _ = options;
-    @panic("Not implemented"); // Stub
-}
-
-fn getModelInfo(ctx: *anyopaque, model_name: []const u8) Provider.Error!models.ModelInfo {
-    _ = ctx;
-    _ = model_name;
-    @panic("Not implemented"); // Stub
-}
-
-fn getModels(ctx: *anyopaque) Provider.Error![]const models.ModelInfo {
-    _ = ctx;
     @panic("Not implemented"); // Stub
 }

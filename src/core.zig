@@ -23,6 +23,7 @@ pub const Message = struct {
     content: []const u8,
 };
 
+// TODO: doesn't really need to be used anywhere. Remove later on.
 pub const StreamHandler = struct {
     context: ?*anyopaque = null,
     writeFn: *const fn (context: ?*anyopaque, content: []const u8) ZaiError!void,

@@ -2,7 +2,6 @@ const std = @import("std");
 const config = @import("config.zig");
 const core = @import("core.zig");
 const requests = @import("requests.zig");
-const models = @import("models.zig");
 const OpenAIProvider = @import("providers/OpenAIProvider.zig");
 const AmazonBedrockProvider = @import("providers/AmazonBedrockProvider.zig");
 
@@ -17,8 +16,6 @@ pub const Provider = struct {
         chat: *const fn (ctx: *anyopaque, options: requests.ChatRequestOptions) Error![]const u8,
         chatStream: *const fn (ctx: *anyopaque, options: requests.ChatRequestOptions, writer: std.io.AnyWriter) Error!void,
         createEmbedding: *const fn (ctx: *anyopaque, options: requests.EmbeddingRequestOptions) Error![]f32,
-        getModelInfo: *const fn (ctx: *anyopaque, model_name: []const u8) Error!models.ModelInfo,
-        getModels: *const fn (ctx: *anyopaque) Error![]const models.ModelInfo,
     };
 
     pub const Error = core.ZaiError;
@@ -72,13 +69,5 @@ pub const Provider = struct {
 
     pub fn createEmbedding(self: *Provider, options: requests.EmbeddingRequestOptions) Error![]f32 {
         return self.vtable.createEmbedding(self.ptr, options);
-    }
-
-    pub fn getModelInfo(self: *Provider, model_name: []const u8) Error!models.ModelInfo {
-        return self.vtable.getModelInfo(self.ptr, model_name);
-    }
-
-    pub fn getModels(self: *Provider) Error![]const models.ModelInfo {
-        return self.vtable.getModels(self.ptr);
     }
 };

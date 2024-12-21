@@ -1,6 +1,7 @@
 const std = @import("std");
 const core = @import("core.zig");
 
+// List of configs that are passed to `providers.zig`
 pub const ProviderConfig = union(core.ProviderType) {
     OpenAI: OpenAIConfig,
     Anthropic: AnthropicConfig,
@@ -37,6 +38,8 @@ pub const LocalConfig = struct {
     runtime: []const u8,
 };
 
+// THIS IS NOT BEING USED
+// TODO: Implement configuration file management
 pub const ConfigManager = struct {
     allocator: std.mem.Allocator,
     current_config: ProviderConfig,

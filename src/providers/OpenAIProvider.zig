@@ -8,8 +8,6 @@ const ChatRequestOptions = requests.ChatRequestOptions;
 const CompletionRequestOptions = requests.CompletionRequestOptions;
 const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
 const Message = core.Message;
-const models = @import("../models.zig");
-const ModelInfo = models.ModelInfo;
 
 allocator: std.mem.Allocator,
 config: OpenAIConfig,
@@ -38,8 +36,6 @@ pub fn init(allocator: std.mem.Allocator, config: OpenAIConfig) !Provider {
             .chat = chat,
             .chatStream = chatStream,
             .createEmbedding = createEmbedding,
-            .getModelInfo = getModelInfo,
-            .getModels = getModels,
         },
     };
 }
@@ -827,14 +823,4 @@ fn createEmbedding(ctx: *anyopaque, options: EmbeddingRequestOptions) Provider.E
     }
 
     return result;
-}
-fn getModelInfo(ctx: *anyopaque, model_name: []const u8) Provider.Error!ModelInfo {
-    _ = ctx;
-    _ = model_name;
-    @panic("Not implemented"); // Stub
-}
-
-fn getModels(ctx: *anyopaque) Provider.Error![]const ModelInfo {
-    _ = ctx;
-    @panic("Not implemented"); // Stub
 }

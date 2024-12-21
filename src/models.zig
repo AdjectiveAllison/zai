@@ -23,7 +23,7 @@ pub const ModelInfo = union(ModelType) {
     },
 };
 
-//TODO: Do this better, actually use it, or replace it.
+//TODO: Delete this file, we aren't using it currently
 pub const ModelRegistry = struct {
     allocator: std.mem.Allocator,
     models: std.StringHashMap(ModelInfo),

@@ -1,15 +1,8 @@
 const std = @import("std");
 
-// Remove old imports
-// pub const AI = @import("AI.zig");
-// pub const ChatCompletion = @import("ChatCompletion.zig");
-// pub const Embeddings = @import("Embeddings.zig");
-// pub const StreamHandler = @import("shared.zig").StreamHandler;
-
 // New imports
 pub const config = @import("config.zig");
 pub const core = @import("core.zig");
-pub const models = @import("models.zig");
 pub const providers = @import("providers.zig");
 pub const requests = @import("requests.zig");
 
@@ -21,10 +14,6 @@ pub const ProviderType = core.ProviderType;
 pub const Message = core.Message;
 pub const StreamHandler = core.StreamHandler;
 pub const ZaiError = core.ZaiError;
-
-pub const ModelType = models.ModelType;
-pub const ModelInfo = models.ModelInfo;
-pub const ModelRegistry = models.ModelRegistry;
 
 pub const ChatRequestOptions = requests.ChatRequestOptions;
 pub const CompletionRequestOptions = requests.CompletionRequestOptions;
