@@ -4,5 +4,4 @@ zig-out/
 
 .aider*
 
-cli/
 test_registry.json

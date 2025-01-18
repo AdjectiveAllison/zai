@@ -84,4 +84,15 @@ pub fn build(b: *std.Build) void {
     const build_registry_load = b.addInstallArtifact(registry_load, .{});
     const build_registry_load_step = b.step("registry-load", "Build the registry loading example");
     build_registry_load_step.dependOn(&build_registry_load.step);
+
+    const cli = b.addExecutable(.{
+        .name = "zai",
+        .root_source_file = b.path("src/cli/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    cli.root_module.addImport("zai", zai_mod);
+    const build_cli = b.addInstallArtifact(cli, .{});
+    const build_cli_step = b.step("cli", "Build the zai CLI");
+    build_cli_step.dependOn(&build_cli.step);
 }
