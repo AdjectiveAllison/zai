@@ -205,7 +205,38 @@ pub fn main() anyerror!void {
         return;
     }
 
-    const options = try args.parseArgs(allocator, cli_args);
+    const options = args.parseArgs(allocator, cli_args) catch |err| {
+        const stderr = std.io.getStdErr().writer();
+        switch (err) {
+            error.MissingCommand => try printUsage(),
+            error.InvalidCommand => {
+                try stderr.print("Invalid command: {s}\n\n", .{cli_args[1]});
+                try printUsage();
+            },
+            error.MissingPrompt => {
+                const command = args.Command.fromString(cli_args[1]) catch {
+                    try printUsage();
+                    return;
+                };
+                switch (command) {
+                    .chat => try printChatHelp(),
+                    .completion => try printCompletionHelp(),
+                    .embedding => try printEmbeddingHelp(),
+                    .provider => try printProviderHelp(),
+                }
+            },
+            error.MissingOptionValue => {
+                try stderr.writeAll("Missing value for option\n");
+                return err;
+            },
+            error.InvalidOption => {
+                try stderr.writeAll("Invalid option\n");
+                return err;
+            },
+            else => return err,
+        }
+        return;
+    };
     defer {
         if (options.provider) |p| allocator.free(p);
         if (options.system_message) |s| allocator.free(s);
@@ -213,21 +244,65 @@ pub fn main() anyerror!void {
         allocator.free(options.prompt);
     }
 
+    const stderr = std.io.getStdErr().writer();
     switch (options.command) {
         .chat => {
             var provider = if (options.provider) |p|
-                try registry_helper.getProviderByName(allocator, p)
+                registry_helper.getProviderByName(allocator, p) catch |err| {
+                    switch (err) {
+                        error.ProviderNotFound => {
+                            try stderr.print("Provider not found: {s}\n", .{p});
+                            return err;
+                        },
+                        else => return err,
+                    }
+                }
             else
-                try registry_helper.getDefaultProvider(allocator);
+                registry_helper.getDefaultProvider(allocator) catch |err| {
+                    switch (err) {
+                        error.NoProvidersConfigured => {
+                            try stderr.writeAll("No providers configured. Please configure a provider first.\n");
+                            return err;
+                        },
+                        else => return err,
+                    }
+                };
             defer provider.deinit();
 
             const provider_name = options.provider orelse "default";
+
+            // Validate model if specified
+            if (options.model) |model| {
+                const config_file = try config_path.getConfigPath(allocator);
+                defer allocator.free(config_file);
+
+                var registry = try zai.Registry.loadFromFile(allocator, config_file);
+                defer registry.deinit();
+
+                registry_helper.validateModel(provider_name, model, &registry) catch |err| {
+                    switch (err) {
+                        error.InvalidModel => {
+                            try stderr.print("Invalid model '{s}' for provider '{s}'\n", .{ model, provider_name });
+                            return err;
+                        },
+                        error.ProviderNotFound => {
+                            try stderr.print("Provider not found: {s}\n", .{provider_name});
+                            return err;
+                        },
+                        else => return err,
+                    }
+                };
+            }
+
             try handleChat(allocator, provider, provider_name, options);
         },
         .completion, .embedding => {
-            std.debug.print("Command not implemented yet: {s}\n", .{@tagName(options.command)});
+            try stderr.print("Command not implemented yet: {s}\n", .{@tagName(options.command)});
             return error.NotImplemented;
         },
-        .provider => try handleProvider(allocator, cli_args),
+        .provider => {
+            try stderr.writeAll("Provider management is not implemented yet\n");
+            return error.NotImplemented;
+        },
     }
 }
