@@ -61,4 +61,27 @@ pub fn build(b: *std.Build) void {
     const build_embeddings = b.addInstallArtifact(embeddings, .{});
     const build_embeddings_step = b.step("embeddings", "Build the embeddings example");
     build_embeddings_step.dependOn(&build_embeddings.step);
+
+    // Registry example
+    const registry = b.addExecutable(.{
+        .name = "registry",
+        .root_source_file = b.path("examples/chat_with_config.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    registry.root_module.addImport("zai", zai_mod);
+    const build_registry = b.addInstallArtifact(registry, .{});
+    const build_registry_step = b.step("registry", "Build the registry example");
+    build_registry_step.dependOn(&build_registry.step);
+
+    const registry_load = b.addExecutable(.{
+        .name = "registry-load",
+        .root_source_file = b.path("examples/registry_load.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    registry_load.root_module.addImport("zai", zai_mod);
+    const build_registry_load = b.addInstallArtifact(registry_load, .{});
+    const build_registry_load_step = b.step("registry-load", "Build the registry loading example");
+    build_registry_load_step.dependOn(&build_registry_load.step);
 }

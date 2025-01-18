@@ -5,6 +5,7 @@ pub const config = @import("config.zig");
 pub const core = @import("core.zig");
 pub const providers = @import("providers.zig");
 pub const requests = @import("requests.zig");
+pub const registry = @import("registry.zig");
 
 // Re-export important types
 pub const Provider = providers.Provider;
@@ -14,6 +15,9 @@ pub const ProviderType = core.ProviderType;
 pub const Message = core.Message;
 pub const StreamHandler = core.StreamHandler;
 pub const ZaiError = core.ZaiError;
+pub const Registry = registry.Registry;
+pub const ModelSpec = registry.ModelSpec;
+pub const ProviderSpec = registry.ProviderSpec;
 
 pub const ChatRequestOptions = requests.ChatRequestOptions;
 pub const CompletionRequestOptions = requests.CompletionRequestOptions;
