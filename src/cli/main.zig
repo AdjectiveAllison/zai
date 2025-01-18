@@ -14,6 +14,7 @@ fn printUsage() !void {
         \\  completion   Get a completion from the AI
         \\  embedding    Get embeddings for text
         \\  provider     Manage AI providers
+        \\  models       Manage provider models
         \\
         \\Run 'zai <command> --help' for more information on a command.
         \\
@@ -102,8 +103,34 @@ fn printProviderHelp() !void {
     );
 }
 
+fn printModelsHelp() !void {
+    const stderr = std.io.getStdErr().writer();
+    try stderr.writeAll(
+        \\Usage: zai models <subcommand>
+        \\
+        \\Manage provider models.
+        \\
+        \\Subcommands:
+        \\  list                     List all models from all providers
+        \\  add <provider> <name>    Add a model to a provider
+        \\
+        \\Options for add:
+        \\  --id <id>               Model ID (required)
+        \\  --chat                  Enable chat capability
+        \\  --completion            Enable completion capability
+        \\  --embedding             Enable embedding capability
+        \\
+        \\Examples:
+        \\  zai models list
+        \\  zai models add aws claude-3-opus --id anthropic.claude-3-opus-20240229 --chat
+        \\  zai models add openai gpt-4 --id gpt-4 --chat --completion
+        \\
+    );
+}
+
 fn handleChat(allocator: std.mem.Allocator, provider: *zai.Provider, provider_name: []const u8, options: args.ChatOptions) !void {
     const stdout = std.io.getStdOut().writer();
+    const stderr = std.io.getStdErr().writer();
 
     // Load registry for model validation
     const config_file = try config_path.getConfigPath(allocator);
@@ -112,8 +139,19 @@ fn handleChat(allocator: std.mem.Allocator, provider: *zai.Provider, provider_na
     var registry = try zai.Registry.loadFromFile(allocator, config_file);
     defer registry.deinit();
 
-    // Validate model if specified
-    try registry_helper.validateModel(provider_name, options.model, &registry);
+    // Get model - either from options or try to find a default model with chat capability
+    const model_id = if (options.model) |m| m else blk: {
+        const provider_info = registry.getProvider(provider_name) orelse return error.ProviderNotFound;
+        for (provider_info.models) |model| {
+            if (model.capabilities.contains(.chat)) {
+                break :blk model.id;
+            }
+        }
+        try stderr.writeAll("No model specified and no default chat model found.\n");
+        try stderr.writeAll("Please specify a model with --model or add a model with chat capability:\n");
+        try stderr.print("  zai models add {s} <model_name> --id <model_id> --chat\n", .{provider_name});
+        return error.NoModelAvailable;
+    };
 
     // Construct messages array
     var messages = std.ArrayList(zai.Message).init(allocator);
@@ -135,7 +173,7 @@ fn handleChat(allocator: std.mem.Allocator, provider: *zai.Provider, provider_na
 
     // Create chat options
     const chat_options = zai.ChatRequestOptions{
-        .model = if (options.model) |m| m else "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        .model = model_id,
         .messages = messages.items,
         .temperature = 0.7,
         .stream = options.stream,
@@ -152,7 +190,6 @@ fn handleChat(allocator: std.mem.Allocator, provider: *zai.Provider, provider_na
 }
 
 fn handleProvider(allocator: std.mem.Allocator, cli_args: []const []const u8) !void {
-    _ = allocator;
     if (cli_args.len < 3) {
         try printProviderHelp();
         return;
@@ -160,15 +197,577 @@ fn handleProvider(allocator: std.mem.Allocator, cli_args: []const []const u8) !v
 
     const subcommand = cli_args[2];
     if (std.mem.eql(u8, subcommand, "list")) {
-        std.debug.print("Provider management is not implemented yet\n", .{});
+        const config_file = try config_path.getConfigPath(allocator);
+        defer allocator.free(config_file);
+
+        var registry = try zai.Registry.loadFromFile(allocator, config_file);
+        defer registry.deinit();
+
+        const stdout = std.io.getStdOut().writer();
+        try stdout.writeAll("Configured providers:\n");
+
+        for (registry.providers.items) |provider| {
+            try stdout.print("\n{s}:\n", .{provider.name});
+            try stdout.writeAll("  Models:\n");
+            for (provider.models) |model| {
+                try stdout.print("    - {s} ({s})\n", .{ model.name, model.id });
+                try stdout.writeAll("      Capabilities: ");
+                var first = true;
+                inline for (std.meta.fields(zai.registry.Capability)) |field| {
+                    if (model.capabilities.contains(@field(zai.registry.Capability, field.name))) {
+                        if (!first) try stdout.writeAll(", ");
+                        try stdout.writeAll(field.name);
+                        first = false;
+                    }
+                }
+                try stdout.writeByte('\n');
+            }
+        }
     } else if (std.mem.eql(u8, subcommand, "add")) {
-        std.debug.print("Provider management is not implemented yet\n", .{});
+        if (cli_args.len < 4) {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll("Missing provider type\n");
+            try stderr.writeAll("Usage: zai provider add <type> [options]\n");
+            try stderr.writeAll("\nSupported types:\n");
+            try stderr.writeAll("  openai            OpenAI API provider\n");
+            try stderr.writeAll("  amazon_bedrock    Amazon Bedrock provider\n");
+            try stderr.writeAll("  anthropic         Anthropic provider\n");
+            try stderr.writeAll("  google_vertex     Google Vertex AI provider\n");
+            try stderr.writeAll("  local             Local provider\n");
+            return;
+        }
+
+        const provider_type = cli_args[3];
+        const config = try parseProviderConfig(allocator, provider_type, cli_args[4..]);
+        defer freeProviderConfig(allocator, config);
+
+        // Load existing registry
+        const config_file = try config_path.getConfigPath(allocator);
+        defer allocator.free(config_file);
+
+        var registry = try zai.Registry.loadFromFile(allocator, config_file);
+        defer registry.deinit();
+
+        // Add the provider with no models
+        if (registry.createProvider(provider_type, config, &[_]zai.ModelSpec{})) |_| {
+            try registry.saveToFile(config_file);
+            const stdout = std.io.getStdOut().writer();
+            try stdout.print("Added provider '{s}'. Use 'zai models add {s} <model>' to add models.\n", .{ provider_type, provider_type });
+        } else |err| {
+            const stderr = std.io.getStdErr().writer();
+            switch (err) {
+                error.ProviderAlreadyExists => {
+                    try stderr.print("Provider '{s}' already exists\n", .{provider_type});
+                    return err;
+                },
+                else => return err,
+            }
+        }
     } else if (std.mem.eql(u8, subcommand, "remove")) {
-        std.debug.print("Provider management is not implemented yet\n", .{});
+        if (cli_args.len < 4) {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll("Missing provider name\n");
+            try stderr.writeAll("Usage: zai provider remove <name>\n");
+            return;
+        }
+
+        const provider_name = cli_args[3];
+        const config_file = try config_path.getConfigPath(allocator);
+        defer allocator.free(config_file);
+
+        var registry = try zai.Registry.loadFromFile(allocator, config_file);
+        defer registry.deinit();
+
+        // Find and remove the provider
+        var found = false;
+        var new_providers = std.ArrayList(zai.ProviderSpec).init(allocator);
+        defer new_providers.deinit();
+
+        for (registry.providers.items) |provider| {
+            if (!std.mem.eql(u8, provider.name, provider_name)) {
+                try new_providers.append(provider);
+            } else {
+                found = true;
+                // Free the provider's memory
+                allocator.free(provider.name);
+                for (provider.models) |*model| {
+                    allocator.free(model.name);
+                    allocator.free(model.id);
+                }
+                allocator.free(provider.models);
+                switch (provider.config) {
+                    .OpenAI => |*openai_config| {
+                        allocator.free(openai_config.api_key);
+                        allocator.free(openai_config.base_url);
+                        if (openai_config.organization) |org| allocator.free(org);
+                    },
+                    .AmazonBedrock => |*amazon_config| {
+                        allocator.free(amazon_config.access_key_id);
+                        allocator.free(amazon_config.secret_access_key);
+                        allocator.free(amazon_config.region);
+                    },
+                    .Anthropic => |*anthropic_config| {
+                        allocator.free(anthropic_config.api_key);
+                        allocator.free(anthropic_config.anthropic_version);
+                    },
+                    .GoogleVertex => |*google_config| {
+                        allocator.free(google_config.api_key);
+                        allocator.free(google_config.project_id);
+                        allocator.free(google_config.location);
+                    },
+                    .Local => |*local_config| {
+                        allocator.free(local_config.runtime);
+                    },
+                }
+            }
+        }
+
+        if (!found) {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.print("Provider '{s}' not found\n", .{provider_name});
+            return;
+        }
+
+        registry.providers.clearAndFree();
+        try registry.providers.appendSlice(new_providers.items);
+        try registry.saveToFile(config_file);
+
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("Removed provider '{s}'\n", .{provider_name});
     } else if (std.mem.eql(u8, subcommand, "set-default")) {
-        std.debug.print("Provider management is not implemented yet\n", .{});
+        if (cli_args.len < 4) {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll("Missing provider name\n");
+            try stderr.writeAll("Usage: zai provider set-default <name>\n");
+            return;
+        }
+
+        const provider_name = cli_args[3];
+        const config_file = try config_path.getConfigPath(allocator);
+        defer allocator.free(config_file);
+
+        var registry = try zai.Registry.loadFromFile(allocator, config_file);
+        defer registry.deinit();
+
+        // Find the provider
+        const provider = registry.getProvider(provider_name) orelse {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.print("Provider '{s}' not found\n", .{provider_name});
+            return;
+        };
+
+        // Move the provider to the front
+        var new_providers = std.ArrayList(zai.ProviderSpec).init(allocator);
+        defer new_providers.deinit();
+
+        try new_providers.append(provider.*);
+        for (registry.providers.items) |other_provider| {
+            if (!std.mem.eql(u8, other_provider.name, provider_name)) {
+                try new_providers.append(other_provider);
+            }
+        }
+
+        registry.providers.clearAndFree();
+        try registry.providers.appendSlice(new_providers.items);
+        try registry.saveToFile(config_file);
+
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("Set '{s}' as the default provider\n", .{provider_name});
     } else {
         try printProviderHelp();
+    }
+}
+
+fn handleModels(allocator: std.mem.Allocator, cli_args: []const []const u8) !void {
+    if (cli_args.len < 3) {
+        try printModelsHelp();
+        return;
+    }
+
+    const subcommand = cli_args[2];
+    if (std.mem.eql(u8, subcommand, "list")) {
+        const config_file = try config_path.getConfigPath(allocator);
+        defer allocator.free(config_file);
+
+        var registry = try zai.Registry.loadFromFile(allocator, config_file);
+        defer registry.deinit();
+
+        const stdout = std.io.getStdOut().writer();
+        try stdout.writeAll("Available models:\n");
+
+        for (registry.providers.items) |provider| {
+            try stdout.print("\n{s}:\n", .{provider.name});
+            for (provider.models) |model| {
+                try stdout.print("  - {s} ({s})\n", .{ model.name, model.id });
+                try stdout.writeAll("    Capabilities: ");
+                var first = true;
+                inline for (std.meta.fields(zai.registry.Capability)) |field| {
+                    if (model.capabilities.contains(@field(zai.registry.Capability, field.name))) {
+                        if (!first) try stdout.writeAll(", ");
+                        try stdout.writeAll(field.name);
+                        first = false;
+                    }
+                }
+                try stdout.writeByte('\n');
+            }
+        }
+    } else if (std.mem.eql(u8, subcommand, "add")) {
+        if (cli_args.len < 5) {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll("Missing provider name or model name\n");
+            try stderr.writeAll("Usage: zai models add <provider> <name> [options]\n");
+            return;
+        }
+
+        const provider_name = cli_args[3];
+        const model_name = cli_args[4];
+
+        // Parse model options
+        var model_id: ?[]const u8 = null;
+        var capabilities = std.EnumSet(zai.registry.Capability).init(.{});
+
+        var i: usize = 5;
+        while (i < cli_args.len) : (i += 1) {
+            const arg = cli_args[i];
+            if (std.mem.eql(u8, arg, "--id")) {
+                if (i + 1 >= cli_args.len) {
+                    const stderr = std.io.getStdErr().writer();
+                    try stderr.writeAll("Missing value for --id\n");
+                    return error.MissingOptionValue;
+                }
+                model_id = try allocator.dupe(u8, cli_args[i + 1]);
+                i += 1;
+            } else if (std.mem.eql(u8, arg, "--chat")) {
+                capabilities.insert(.chat);
+            } else if (std.mem.eql(u8, arg, "--completion")) {
+                capabilities.insert(.completion);
+            } else if (std.mem.eql(u8, arg, "--embedding")) {
+                capabilities.insert(.embedding);
+            } else {
+                const stderr = std.io.getStdErr().writer();
+                try stderr.print("Invalid option: {s}\n", .{arg});
+                return error.InvalidOption;
+            }
+        }
+
+        if (model_id == null) {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll("Missing required --id option\n");
+            return error.MissingRequiredField;
+        }
+        defer if (model_id) |id| allocator.free(id);
+
+        // Load registry
+        const config_file = try config_path.getConfigPath(allocator);
+        defer allocator.free(config_file);
+
+        var registry = try zai.Registry.loadFromFile(allocator, config_file);
+        defer registry.deinit();
+
+        // Find provider
+        const provider = registry.getProvider(provider_name) orelse {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.print("Provider '{s}' not found\n", .{provider_name});
+            return error.ProviderNotFound;
+        };
+
+        // Check if model already exists
+        for (provider.models) |model| {
+            if (std.mem.eql(u8, model.name, model_name)) {
+                const stderr = std.io.getStdErr().writer();
+                try stderr.print("Model '{s}' already exists for provider '{s}'\n", .{ model_name, provider_name });
+                return error.ModelAlreadyExists;
+            }
+        }
+
+        // Create new models array with added model
+        var new_models = try allocator.alloc(zai.ModelSpec, provider.models.len + 1);
+        defer allocator.free(new_models);
+
+        // Copy existing models
+        for (provider.models, 0..) |model, idx| {
+            new_models[idx] = .{
+                .name = try allocator.dupe(u8, model.name),
+                .id = try allocator.dupe(u8, model.id),
+                .capabilities = model.capabilities,
+            };
+        }
+
+        // Add new model
+        new_models[provider.models.len] = .{
+            .name = try allocator.dupe(u8, model_name),
+            .id = try allocator.dupe(u8, model_id.?),
+            .capabilities = capabilities,
+        };
+
+        // Update provider's models
+        for (provider.models) |model| {
+            allocator.free(model.name);
+            allocator.free(model.id);
+        }
+        allocator.free(provider.models);
+        provider.models = new_models;
+
+        // Save registry
+        try registry.saveToFile(config_file);
+
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("Added model '{s}' to provider '{s}'\n", .{ model_name, provider_name });
+    } else {
+        try printModelsHelp();
+    }
+}
+
+fn parseProviderConfig(allocator: std.mem.Allocator, provider_type: []const u8, options: []const []const u8) !zai.ProviderConfig {
+    var i: usize = 0;
+    if (std.mem.eql(u8, provider_type, "openai")) {
+        var api_key: ?[]const u8 = null;
+        var base_url: ?[]const u8 = null;
+        var organization: ?[]const u8 = null;
+        errdefer {
+            if (api_key) |key| allocator.free(key);
+            if (base_url) |url| allocator.free(url);
+            if (organization) |org| allocator.free(org);
+        }
+
+        while (i < options.len) : (i += 2) {
+            const arg = options[i];
+            if (i + 1 >= options.len) return error.MissingOptionValue;
+            const value = options[i + 1];
+
+            if (std.mem.eql(u8, arg, "--api-key")) {
+                if (api_key) |key| allocator.free(key);
+                api_key = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, arg, "--base-url")) {
+                if (base_url) |url| allocator.free(url);
+                base_url = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, arg, "--organization")) {
+                if (organization) |org| allocator.free(org);
+                organization = try allocator.dupe(u8, value);
+            }
+        }
+
+        if (api_key == null or base_url == null) return error.MissingRequiredField;
+
+        return zai.ProviderConfig{ .OpenAI = .{
+            .api_key = api_key.?,
+            .base_url = base_url.?,
+            .organization = organization,
+        } };
+    } else if (std.mem.eql(u8, provider_type, "amazon_bedrock")) {
+        var access_key_id: ?[]const u8 = null;
+        var secret_access_key: ?[]const u8 = null;
+        var region: ?[]const u8 = null;
+        errdefer {
+            if (access_key_id) |key| allocator.free(key);
+            if (secret_access_key) |key| allocator.free(key);
+            if (region) |r| allocator.free(r);
+        }
+
+        while (i < options.len) : (i += 2) {
+            const arg = options[i];
+            if (i + 1 >= options.len) return error.MissingOptionValue;
+            const value = options[i + 1];
+
+            if (std.mem.eql(u8, arg, "--access-key-id")) {
+                if (access_key_id) |key| allocator.free(key);
+                access_key_id = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, arg, "--secret-access-key")) {
+                if (secret_access_key) |key| allocator.free(key);
+                secret_access_key = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, arg, "--region")) {
+                if (region) |r| allocator.free(r);
+                region = try allocator.dupe(u8, value);
+            }
+        }
+
+        if (access_key_id == null or secret_access_key == null or region == null) return error.MissingRequiredField;
+
+        return zai.ProviderConfig{ .AmazonBedrock = .{
+            .access_key_id = access_key_id.?,
+            .secret_access_key = secret_access_key.?,
+            .region = region.?,
+        } };
+    } else if (std.mem.eql(u8, provider_type, "anthropic")) {
+        var api_key: ?[]const u8 = null;
+        var anthropic_version: ?[]const u8 = null;
+        errdefer {
+            if (api_key) |key| allocator.free(key);
+            if (anthropic_version) |ver| allocator.free(ver);
+        }
+
+        while (i < options.len) : (i += 2) {
+            const arg = options[i];
+            if (i + 1 >= options.len) return error.MissingOptionValue;
+            const value = options[i + 1];
+
+            if (std.mem.eql(u8, arg, "--api-key")) {
+                if (api_key) |key| allocator.free(key);
+                api_key = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, arg, "--anthropic-version")) {
+                if (anthropic_version) |ver| allocator.free(ver);
+                anthropic_version = try allocator.dupe(u8, value);
+            }
+        }
+
+        if (api_key == null or anthropic_version == null) return error.MissingRequiredField;
+
+        return zai.ProviderConfig{ .Anthropic = .{
+            .api_key = api_key.?,
+            .anthropic_version = anthropic_version.?,
+        } };
+    } else if (std.mem.eql(u8, provider_type, "google_vertex")) {
+        var api_key: ?[]const u8 = null;
+        var project_id: ?[]const u8 = null;
+        var location: ?[]const u8 = null;
+        errdefer {
+            if (api_key) |key| allocator.free(key);
+            if (project_id) |id| allocator.free(id);
+            if (location) |loc| allocator.free(loc);
+        }
+
+        while (i < options.len) : (i += 2) {
+            const arg = options[i];
+            if (i + 1 >= options.len) return error.MissingOptionValue;
+            const value = options[i + 1];
+
+            if (std.mem.eql(u8, arg, "--api-key")) {
+                if (api_key) |key| allocator.free(key);
+                api_key = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, arg, "--project-id")) {
+                if (project_id) |id| allocator.free(id);
+                project_id = try allocator.dupe(u8, value);
+            } else if (std.mem.eql(u8, arg, "--location")) {
+                if (location) |loc| allocator.free(loc);
+                location = try allocator.dupe(u8, value);
+            }
+        }
+
+        if (api_key == null or project_id == null or location == null) return error.MissingRequiredField;
+
+        return zai.ProviderConfig{ .GoogleVertex = .{
+            .api_key = api_key.?,
+            .project_id = project_id.?,
+            .location = location.?,
+        } };
+    } else if (std.mem.eql(u8, provider_type, "local")) {
+        var runtime: ?[]const u8 = null;
+        errdefer if (runtime) |r| allocator.free(r);
+
+        while (i < options.len) : (i += 2) {
+            const arg = options[i];
+            if (i + 1 >= options.len) return error.MissingOptionValue;
+            const value = options[i + 1];
+
+            if (std.mem.eql(u8, arg, "--runtime")) {
+                if (runtime) |r| allocator.free(r);
+                runtime = try allocator.dupe(u8, value);
+            }
+        }
+
+        if (runtime == null) return error.MissingRequiredField;
+
+        return zai.ProviderConfig{ .Local = .{
+            .runtime = runtime.?,
+        } };
+    }
+
+    return error.InvalidProviderType;
+}
+
+fn freeProviderConfig(allocator: std.mem.Allocator, config: zai.ProviderConfig) void {
+    switch (config) {
+        .OpenAI => |*openai_config| {
+            allocator.free(openai_config.api_key);
+            allocator.free(openai_config.base_url);
+            if (openai_config.organization) |org| allocator.free(org);
+        },
+        .AmazonBedrock => |*amazon_config| {
+            allocator.free(amazon_config.access_key_id);
+            allocator.free(amazon_config.secret_access_key);
+            allocator.free(amazon_config.region);
+        },
+        .Anthropic => |*anthropic_config| {
+            allocator.free(anthropic_config.api_key);
+            allocator.free(anthropic_config.anthropic_version);
+        },
+        .GoogleVertex => |*google_config| {
+            allocator.free(google_config.api_key);
+            allocator.free(google_config.project_id);
+            allocator.free(google_config.location);
+        },
+        .Local => |*local_config| {
+            allocator.free(local_config.runtime);
+        },
+    }
+}
+
+fn addDefaultModels(allocator: std.mem.Allocator, models: *std.ArrayList(zai.ModelSpec), provider_type: []const u8) !void {
+    if (std.mem.eql(u8, provider_type, "openai")) {
+        try models.append(.{
+            .name = try allocator.dupe(u8, "gpt-4"),
+            .id = try allocator.dupe(u8, "gpt-4"),
+            .capabilities = std.EnumSet(zai.registry.Capability).init(.{
+                .chat = true,
+                .completion = true,
+            }),
+        });
+        try models.append(.{
+            .name = try allocator.dupe(u8, "gpt-3.5-turbo"),
+            .id = try allocator.dupe(u8, "gpt-3.5-turbo"),
+            .capabilities = std.EnumSet(zai.registry.Capability).init(.{
+                .chat = true,
+                .completion = true,
+            }),
+        });
+    } else if (std.mem.eql(u8, provider_type, "amazon_bedrock")) {
+        try models.append(.{
+            .name = try allocator.dupe(u8, "claude-3-sonnet"),
+            .id = try allocator.dupe(u8, "anthropic.claude-3-sonnet-20240229-v1:0"),
+            .capabilities = std.EnumSet(zai.registry.Capability).init(.{
+                .chat = true,
+            }),
+        });
+        try models.append(.{
+            .name = try allocator.dupe(u8, "claude-3-haiku"),
+            .id = try allocator.dupe(u8, "anthropic.claude-3-haiku-20240307-v1:0"),
+            .capabilities = std.EnumSet(zai.registry.Capability).init(.{
+                .chat = true,
+            }),
+        });
+    } else if (std.mem.eql(u8, provider_type, "anthropic")) {
+        try models.append(.{
+            .name = try allocator.dupe(u8, "claude-3-opus"),
+            .id = try allocator.dupe(u8, "claude-3-opus-20240229"),
+            .capabilities = std.EnumSet(zai.registry.Capability).init(.{
+                .chat = true,
+            }),
+        });
+        try models.append(.{
+            .name = try allocator.dupe(u8, "claude-3-sonnet"),
+            .id = try allocator.dupe(u8, "claude-3-sonnet-20240229"),
+            .capabilities = std.EnumSet(zai.registry.Capability).init(.{
+                .chat = true,
+            }),
+        });
+    } else if (std.mem.eql(u8, provider_type, "google_vertex")) {
+        try models.append(.{
+            .name = try allocator.dupe(u8, "gemini-pro"),
+            .id = try allocator.dupe(u8, "gemini-pro"),
+            .capabilities = std.EnumSet(zai.registry.Capability).init(.{
+                .chat = true,
+                .completion = true,
+            }),
+        });
+    } else if (std.mem.eql(u8, provider_type, "local")) {
+        try models.append(.{
+            .name = try allocator.dupe(u8, "default"),
+            .id = try allocator.dupe(u8, "default"),
+            .capabilities = std.EnumSet(zai.registry.Capability).init(.{
+                .chat = true,
+                .completion = true,
+            }),
+        });
     }
 }
 
@@ -201,6 +800,7 @@ pub fn main() anyerror!void {
             .completion => try printCompletionHelp(),
             .embedding => try printEmbeddingHelp(),
             .provider => try printProviderHelp(),
+            .models => try printModelsHelp(),
         }
         return;
     }
@@ -223,6 +823,7 @@ pub fn main() anyerror!void {
                     .completion => try printCompletionHelp(),
                     .embedding => try printEmbeddingHelp(),
                     .provider => try printProviderHelp(),
+                    .models => try printModelsHelp(),
                 }
             },
             error.MissingOptionValue => {
@@ -270,39 +871,18 @@ pub fn main() anyerror!void {
             defer provider.deinit();
 
             const provider_name = options.provider orelse "default";
-
-            // Validate model if specified
-            if (options.model) |model| {
-                const config_file = try config_path.getConfigPath(allocator);
-                defer allocator.free(config_file);
-
-                var registry = try zai.Registry.loadFromFile(allocator, config_file);
-                defer registry.deinit();
-
-                registry_helper.validateModel(provider_name, model, &registry) catch |err| {
-                    switch (err) {
-                        error.InvalidModel => {
-                            try stderr.print("Invalid model '{s}' for provider '{s}'\n", .{ model, provider_name });
-                            return err;
-                        },
-                        error.ProviderNotFound => {
-                            try stderr.print("Provider not found: {s}\n", .{provider_name});
-                            return err;
-                        },
-                        else => return err,
-                    }
-                };
-            }
-
-            try handleChat(allocator, provider, provider_name, options);
+            handleChat(allocator, provider, provider_name, options) catch |err| {
+                switch (err) {
+                    error.NoModelAvailable => return err,
+                    else => return err,
+                }
+            };
         },
         .completion, .embedding => {
             try stderr.print("Command not implemented yet: {s}\n", .{@tagName(options.command)});
             return error.NotImplemented;
         },
-        .provider => {
-            try stderr.writeAll("Provider management is not implemented yet\n");
-            return error.NotImplemented;
-        },
+        .provider => try handleProvider(allocator, cli_args),
+        .models => try handleModels(allocator, cli_args),
     }
 }

@@ -182,83 +182,119 @@ pub const Registry = struct {
             const api_key = json_obj.get("api_key") orelse return error.MissingRequiredField;
             const base_url = json_obj.get("base_url") orelse return error.MissingRequiredField;
 
-            const api_key_dup = try allocator.dupe(u8, api_key.string);
-            errdefer allocator.free(api_key_dup);
+            var api_key_dup: ?[]const u8 = null;
+            var base_url_dup: ?[]const u8 = null;
+            var organization_dup: ?[]const u8 = null;
+            errdefer {
+                if (api_key_dup) |key| allocator.free(key);
+                if (base_url_dup) |url| allocator.free(url);
+                if (organization_dup) |org| allocator.free(org);
+            }
 
-            const base_url_dup = try allocator.dupe(u8, base_url.string);
-            errdefer allocator.free(base_url_dup);
+            api_key_dup = try allocator.dupe(u8, api_key.string);
+            errdefer allocator.free(api_key_dup.?);
 
-            const organization = if (json_obj.get("organization")) |org|
+            base_url_dup = try allocator.dupe(u8, base_url.string);
+            errdefer allocator.free(base_url_dup.?);
+
+            organization_dup = if (json_obj.get("organization")) |org|
                 try allocator.dupe(u8, org.string)
             else
                 null;
-            errdefer if (organization) |org| allocator.free(org);
 
             return ProviderConfig{ .OpenAI = .{
-                .api_key = api_key_dup,
-                .base_url = base_url_dup,
-                .organization = organization,
+                .api_key = api_key_dup.?,
+                .base_url = base_url_dup.?,
+                .organization = organization_dup,
             } };
         } else if (std.mem.eql(u8, config_type, "amazon_bedrock")) {
             const access_key_id = json_obj.get("access_key_id") orelse return error.MissingRequiredField;
             const secret_access_key = json_obj.get("secret_access_key") orelse return error.MissingRequiredField;
             const region = json_obj.get("region") orelse return error.MissingRequiredField;
 
-            const access_key_id_dup = try allocator.dupe(u8, access_key_id.string);
-            errdefer allocator.free(access_key_id_dup);
+            var access_key_id_dup: ?[]const u8 = null;
+            var secret_access_key_dup: ?[]const u8 = null;
+            var region_dup: ?[]const u8 = null;
+            errdefer {
+                if (access_key_id_dup) |key| allocator.free(key);
+                if (secret_access_key_dup) |key| allocator.free(key);
+                if (region_dup) |r| allocator.free(r);
+            }
 
-            const secret_access_key_dup = try allocator.dupe(u8, secret_access_key.string);
-            errdefer allocator.free(secret_access_key_dup);
+            access_key_id_dup = try allocator.dupe(u8, access_key_id.string);
+            errdefer allocator.free(access_key_id_dup.?);
 
-            const region_dup = try allocator.dupe(u8, region.string);
-            errdefer allocator.free(region_dup);
+            secret_access_key_dup = try allocator.dupe(u8, secret_access_key.string);
+            errdefer allocator.free(secret_access_key_dup.?);
+
+            region_dup = try allocator.dupe(u8, region.string);
+            errdefer allocator.free(region_dup.?);
 
             return ProviderConfig{ .AmazonBedrock = .{
-                .access_key_id = access_key_id_dup,
-                .secret_access_key = secret_access_key_dup,
-                .region = region_dup,
+                .access_key_id = access_key_id_dup.?,
+                .secret_access_key = secret_access_key_dup.?,
+                .region = region_dup.?,
             } };
         } else if (std.mem.eql(u8, config_type, "anthropic")) {
             const api_key = json_obj.get("api_key") orelse return error.MissingRequiredField;
             const anthropic_version = json_obj.get("anthropic_version") orelse return error.MissingRequiredField;
 
-            const api_key_dup = try allocator.dupe(u8, api_key.string);
-            errdefer allocator.free(api_key_dup);
+            var api_key_dup: ?[]const u8 = null;
+            var anthropic_version_dup: ?[]const u8 = null;
+            errdefer {
+                if (api_key_dup) |key| allocator.free(key);
+                if (anthropic_version_dup) |ver| allocator.free(ver);
+            }
 
-            const anthropic_version_dup = try allocator.dupe(u8, anthropic_version.string);
-            errdefer allocator.free(anthropic_version_dup);
+            api_key_dup = try allocator.dupe(u8, api_key.string);
+            errdefer allocator.free(api_key_dup.?);
+
+            anthropic_version_dup = try allocator.dupe(u8, anthropic_version.string);
+            errdefer allocator.free(anthropic_version_dup.?);
 
             return ProviderConfig{ .Anthropic = .{
-                .api_key = api_key_dup,
-                .anthropic_version = anthropic_version_dup,
+                .api_key = api_key_dup.?,
+                .anthropic_version = anthropic_version_dup.?,
             } };
         } else if (std.mem.eql(u8, config_type, "google_vertex")) {
             const api_key = json_obj.get("api_key") orelse return error.MissingRequiredField;
             const project_id = json_obj.get("project_id") orelse return error.MissingRequiredField;
             const location = json_obj.get("location") orelse return error.MissingRequiredField;
 
-            const api_key_dup = try allocator.dupe(u8, api_key.string);
-            errdefer allocator.free(api_key_dup);
+            var api_key_dup: ?[]const u8 = null;
+            var project_id_dup: ?[]const u8 = null;
+            var location_dup: ?[]const u8 = null;
+            errdefer {
+                if (api_key_dup) |key| allocator.free(key);
+                if (project_id_dup) |id| allocator.free(id);
+                if (location_dup) |loc| allocator.free(loc);
+            }
 
-            const project_id_dup = try allocator.dupe(u8, project_id.string);
-            errdefer allocator.free(project_id_dup);
+            api_key_dup = try allocator.dupe(u8, api_key.string);
+            errdefer allocator.free(api_key_dup.?);
 
-            const location_dup = try allocator.dupe(u8, location.string);
-            errdefer allocator.free(location_dup);
+            project_id_dup = try allocator.dupe(u8, project_id.string);
+            errdefer allocator.free(project_id_dup.?);
+
+            location_dup = try allocator.dupe(u8, location.string);
+            errdefer allocator.free(location_dup.?);
 
             return ProviderConfig{ .GoogleVertex = .{
-                .api_key = api_key_dup,
-                .project_id = project_id_dup,
-                .location = location_dup,
+                .api_key = api_key_dup.?,
+                .project_id = project_id_dup.?,
+                .location = location_dup.?,
             } };
         } else if (std.mem.eql(u8, config_type, "local")) {
             const runtime = json_obj.get("runtime") orelse return error.MissingRequiredField;
 
-            const runtime_dup = try allocator.dupe(u8, runtime.string);
-            errdefer allocator.free(runtime_dup);
+            var runtime_dup: ?[]const u8 = null;
+            errdefer if (runtime_dup) |r| allocator.free(r);
+
+            runtime_dup = try allocator.dupe(u8, runtime.string);
+            errdefer allocator.free(runtime_dup.?);
 
             return ProviderConfig{ .Local = .{
-                .runtime = runtime_dup,
+                .runtime = runtime_dup.?,
             } };
         }
 
@@ -317,8 +353,8 @@ pub const Registry = struct {
             const config_obj = provider.get("config") orelse return error.MissingRequiredField;
             const type_value = config_obj.object.get("type") orelse return error.MissingRequiredField;
 
-            const provider_config = try parseProviderConfig(allocator, type_value.string, config_obj.object);
-            errdefer {
+            var provider_config = try parseProviderConfig(allocator, type_value.string, config_obj.object);
+            defer {
                 switch (provider_config) {
                     .OpenAI => |*openai_config| {
                         allocator.free(openai_config.api_key);
@@ -399,12 +435,10 @@ pub const Registry = struct {
         provider_config: ProviderConfig,
         models: []const ModelSpec,
     ) !void {
+        // Check for existing provider first to avoid unnecessary allocations
         if (self.getProvider(name) != null) {
             return error.ProviderAlreadyExists;
         }
-
-        const name_dup = try self.allocator.dupe(u8, name);
-        errdefer self.allocator.free(name_dup);
 
         // Create a new array for the models
         var models_dup = try self.allocator.alloc(ModelSpec, models.len);
@@ -421,17 +455,126 @@ pub const Registry = struct {
 
         // Copy each model
         for (models, 0..) |model, i| {
+            const model_name = try self.allocator.dupe(u8, model.name);
+            errdefer self.allocator.free(model_name);
+
+            const model_id = try self.allocator.dupe(u8, model.id);
+            errdefer self.allocator.free(model_id);
+
             models_dup[i] = .{
-                .name = try self.allocator.dupe(u8, model.name),
-                .id = try self.allocator.dupe(u8, model.id),
+                .name = model_name,
+                .id = model_id,
                 .capabilities = model.capabilities,
             };
             successful_dups += 1;
         }
 
+        // Duplicate provider config
+        const config_dup = switch (provider_config) {
+            .OpenAI => |openai_config| blk: {
+                const api_key = try self.allocator.dupe(u8, openai_config.api_key);
+                errdefer self.allocator.free(api_key);
+
+                const base_url = try self.allocator.dupe(u8, openai_config.base_url);
+                errdefer self.allocator.free(base_url);
+
+                const organization = if (openai_config.organization) |org|
+                    try self.allocator.dupe(u8, org)
+                else
+                    null;
+                errdefer if (organization) |org| self.allocator.free(org);
+
+                break :blk ProviderConfig{ .OpenAI = .{
+                    .api_key = api_key,
+                    .base_url = base_url,
+                    .organization = organization,
+                } };
+            },
+            .AmazonBedrock => |amazon_config| blk: {
+                const access_key_id = try self.allocator.dupe(u8, amazon_config.access_key_id);
+                errdefer self.allocator.free(access_key_id);
+
+                const secret_access_key = try self.allocator.dupe(u8, amazon_config.secret_access_key);
+                errdefer self.allocator.free(secret_access_key);
+
+                const region = try self.allocator.dupe(u8, amazon_config.region);
+                errdefer self.allocator.free(region);
+
+                break :blk ProviderConfig{ .AmazonBedrock = .{
+                    .access_key_id = access_key_id,
+                    .secret_access_key = secret_access_key,
+                    .region = region,
+                } };
+            },
+            .Anthropic => |anthropic_config| blk: {
+                const api_key = try self.allocator.dupe(u8, anthropic_config.api_key);
+                errdefer self.allocator.free(api_key);
+
+                const anthropic_version = try self.allocator.dupe(u8, anthropic_config.anthropic_version);
+                errdefer self.allocator.free(anthropic_version);
+
+                break :blk ProviderConfig{ .Anthropic = .{
+                    .api_key = api_key,
+                    .anthropic_version = anthropic_version,
+                } };
+            },
+            .GoogleVertex => |google_config| blk: {
+                const api_key = try self.allocator.dupe(u8, google_config.api_key);
+                errdefer self.allocator.free(api_key);
+
+                const project_id = try self.allocator.dupe(u8, google_config.project_id);
+                errdefer self.allocator.free(project_id);
+
+                const location = try self.allocator.dupe(u8, google_config.location);
+                errdefer self.allocator.free(location);
+
+                break :blk ProviderConfig{ .GoogleVertex = .{
+                    .api_key = api_key,
+                    .project_id = project_id,
+                    .location = location,
+                } };
+            },
+            .Local => |local_config| blk: {
+                const runtime = try self.allocator.dupe(u8, local_config.runtime);
+                errdefer self.allocator.free(runtime);
+
+                break :blk ProviderConfig{ .Local = .{
+                    .runtime = runtime,
+                } };
+            },
+        };
+        errdefer switch (config_dup) {
+            .OpenAI => |*openai_config| {
+                self.allocator.free(openai_config.api_key);
+                self.allocator.free(openai_config.base_url);
+                if (openai_config.organization) |org| self.allocator.free(org);
+            },
+            .AmazonBedrock => |*amazon_config| {
+                self.allocator.free(amazon_config.access_key_id);
+                self.allocator.free(amazon_config.secret_access_key);
+                self.allocator.free(amazon_config.region);
+            },
+            .Anthropic => |*anthropic_config| {
+                self.allocator.free(anthropic_config.api_key);
+                self.allocator.free(anthropic_config.anthropic_version);
+            },
+            .GoogleVertex => |*google_config| {
+                self.allocator.free(google_config.api_key);
+                self.allocator.free(google_config.project_id);
+                self.allocator.free(google_config.location);
+            },
+            .Local => |*local_config| {
+                self.allocator.free(local_config.runtime);
+            },
+        };
+
+        // Duplicate the name last, after all other allocations succeed
+        const name_dup = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(name_dup);
+
         try self.providers.append(.{
             .name = name_dup,
-            .config = provider_config,
+            .config = config_dup,
             .instance = null,
             .models = models_dup,
         });
