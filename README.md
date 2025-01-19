@@ -1,59 +1,73 @@
-# zai - a Zig AI Library!
+# zai - a Zig AI Library
 
-## Installation
-
-1. Declare zai as a project dependency with `zig fetch`:
-
-    ```sh
-    # latest version
-    zig fetch --save git+https://github.com/AdjectiveAllison/zai.git#main
-
-    # specific commit
-    zig fetch --save git+https://github.com/AdjectiveAllison/zai.git#COMMIT
-    ```
-
-2. Expose zai as a module in your project's `build.zig`:
-
-    ```zig
-    pub fn build(b: *std.Build) void {
-        const target = b.standardTargetOptions(.{});
-        const optimize = b.standardOptimizeOption(.{});
-
-        const opts = .{ .target = target, .optimize = optimize };   // 👈
-        const zai = b.dependency("zai", opts).module("zai"); // 👈
-
-        const exe = b.addExecutable(.{
-            .name = "my-project",
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        });
-
-        exe.root_module.addImport("zai", zai); // 👈
-
-        // ...
-    }
-    ```
-
-3. Import Zig AI into your code:
-
-    ```zig
-    const zai = @import("zai");
-    ```
+zai is a flexible Zig library for interacting with various AI providers' APIs, offering a unified interface for chat completions, embeddings, and more.
 
 ## Features
 
-- Support for chat completions and embeddings
-- Streaming capabilities for real-time responses
-- Easy integration with Zig projects
-- Configurable model selection
-- Automatic provider-specific API handling (in the works)
+- Multi-provider support:
+  - OpenAI-compatible APIs (OpenAI, Together.ai, OpenRouter)
+  - Amazon Bedrock
+  - Support coming soon for Anthropic, Google Vertex AI, and local models via zml
+- Unified interface across providers
+- Streaming support for real-time responses
+- Provider and model registry for easy configuration
+- Command-line interface (CLI) for quick interactions
+- Supports chat completions, standard completions, and embeddings
+
+## Installation
+
+1. Add zai as a dependency using `zig fetch`:
+
+```sh
+# Latest version
+zig fetch --save git+https://github.com/AdjectiveAllison/zai.git#main
+```
+
+2. Add zai as a module in your `build.zig`:
+
+```zig
+const zai_dep = b.dependency("zai", .{
+    .target = target,
+    .optimize = optimize,
+});
+const zai_mod = zai_dep.module("zai");
+
+// Add to your executable
+exe.root_module.addImport("zai", zai_mod);
+```
+
+## CLI Installation
+
+To install the zai CLI tool:
+
+```sh
+zig build cli install -Doptimize=ReleaseFast --prefix ~/.local
+```
 
 ## Usage
 
-### Chat Completion
+### Provider Configuration
 
-Here's a basic example of using zai for chat completion:
+First, create a provider configuration. You can do this programmatically or via the CLI:
+
+```zig
+const zai = @import("zai");
+
+// OpenAI-compatible configuration
+const provider_config = zai.ProviderConfig{ .OpenAI = .{
+    .api_key = "your-api-key",
+    .base_url = "https://api.together.xyz/v1",  // Together.ai example
+}};
+
+// Amazon Bedrock configuration
+const bedrock_config = zai.ProviderConfig{ .AmazonBedrock = .{
+    .access_key_id = "your-access-key",
+    .secret_access_key = "your-secret-key",
+    .region = "us-west-2",
+}};
+```
+
+### Chat Example
 
 ```zig
 const std = @import("std");
@@ -64,93 +78,87 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var ai: zai.AI = undefined;
-    try ai.init(allocator, zai.Provider.OctoAI);
-    defer ai.deinit();
+    // Initialize provider
+    var provider = try zai.init(allocator, provider_config);
+    defer provider.deinit();
 
-    var messages = [_]zai.Message{
+    // Set up chat messages
+    const messages = [_]zai.Message{
         .{
             .role = "system",
-            .content = "You are a helpful AI assistant.",
+            .content = "You are a helpful assistant.",
         },
         .{
             .role = "user",
-            .content = "Write one sentence about how cool it would be to use zig to call language models.",
+            .content = "Tell me a short joke.",
         },
     };
 
-    const payload = zai.CompletionPayload{
-        .model = "meta-llama-3.1-8b-instruct",
+    // Configure chat options
+    const chat_options = zai.ChatRequestOptions{
+        .model = "mistralai/Mixtral-8x7B-v0.1",
         .messages = &messages,
-        .temperature = 0.1,
+        .temperature = 0.7,
         .stream = true,
     };
 
-    var chat_completion: zai.ChatCompletion = undefined;
-    chat_completion.init(allocator);
-    defer chat_completion.deinit();
-
-    try chat_completion.streamAndPrint(&ai, payload);
+    // Stream the response
+    try provider.chatStream(chat_options, std.io.getStdOut().writer());
 }
 ```
 
-### Embeddings
+### Provider Feature Matrix
 
-Here's how to use zai for generating embeddings:
+| Provider       | Chat | Chat Stream | Completion | Completion Stream | Embeddings |
+|---------------|------|-------------|------------|-------------------|------------|
+| OpenAI-compatible | ✅   | ✅          | ✅         | ✅                | ✅         |
+| Amazon Bedrock    | ✅   | ✅          | ❌         | ❌                | ❌         |
+| Anthropic*       | ❌   | ❌          | ❌         | ❌                | ❌         |
+| Google Vertex*   | ❌   | ❌          | ❌         | ❌                | ❌         |
+| Local (zml)*     | ❌   | ❌          | ❌         | ❌                | ❌         |
 
-```zig
-const std = @import("std");
-const zai = @import("zai");
+\* Coming soon
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+## CLI Usage
 
-    var ai: zai.AI = undefined;
-    try ai.init(allocator, zai.Provider.OctoAI);
-    defer ai.deinit();
+The zai CLI provides commands for managing providers, models, and making API calls:
 
-    const input_text = "Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.";
+```sh
+# Add a provider (Idk if this works or not yet)
+zai provider add openai --api-key "your-key" --base-url "https://api.openai.com/v1"
 
-    const payload = zai.Embeddings.EmbeddingsPayload{
-        .input = input_text,
-        .model = "thenlper/gte-large",
-    };
+# Add a model to a provider
+zai models add openai gpt-4 --id gpt-4-turbo-preview --chat
 
-    var embeddings: zai.Embeddings = undefined;
-    embeddings.init(allocator);
-    defer embeddings.deinit();
+# Chat with a model (will use first provider and first model of provider by default)
+zai chat --provider openai --model gpt-4 "Tell me a joke"
+# same as this if openai and gpt-4 are your first provider and chat model in config.
+zai chat "tell me a joke"
+```
 
-    try embeddings.request(&ai, payload);
-
-    std.debug.print("Embedding vector length: {d}\n", .{embeddings.embedding.len});
-}
+See more CLI examples and documentation by running:
+```sh
+zai --help
+zai <command> --help
 ```
 
 ## Examples
 
-You can find more detailed examples in the `examples/` directory:
+Check out the `examples/` directory for more detailed examples:
+- Chat using OpenAI-compatible APIs (`examples/chat_openai.zig`)
+- Chat using Amazon Bedrock (`examples/chat_bedrock.zig`)
+- Embeddings generation (`examples/embeddings.zig`)
+- Provider registry management (`examples/registry.zig`)
+- And more!
 
-1. [Chat Completion](examples/chat_completion.zig)
-2. [Embeddings](examples/embeddings.zig)
+## Contributing
 
-To run an example, use:
-
-```sh
-zig build chat-completion
-# or
-zig build embeddings
-```
-
-## Configuration
-
-zai uses environment variables for API keys (right now). Set the appropriate environment variable for your chosen provider:
-
-- OpenAI: `OPENAI_API_KEY`
-- OctoAI: `OCTOAI_TOKEN`
-- TogetherAI: `TOGETHER_API_KEY`
-- OpenRouter: `OPENROUTER_API_KEY`
+Contributions are welcome! Some areas that need work:
+- Adding tests
+- Improving CLI provider configuration workflow
+- Implementing additional providers (Anthropic, Google Vertex AI)
+- Local model support via zml integration
+- Documentation improvements
 
 ## License
 

@@ -65,7 +65,7 @@ pub fn build(b: *std.Build) void {
     // Registry example
     const registry = b.addExecutable(.{
         .name = "registry",
-        .root_source_file = b.path("examples/chat_with_config.zig"),
+        .root_source_file = b.path("examples/registry.zig"),
         .target = target,
         .optimize = optimize,
     });
