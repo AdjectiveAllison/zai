@@ -26,5 +26,7 @@ pub fn getConfigPath(allocator: std.mem.Allocator) ![]const u8 {
 pub fn ensureConfigDirExists() !void {
     const config_dir = try getConfigDir(std.heap.page_allocator);
     defer std.heap.page_allocator.free(config_dir);
-    try std.fs.makeDirAbsolute(config_dir);
+    std.fs.makeDirAbsolute(config_dir) catch |err| {
+        if (err != error.PathAlreadyExists) return err;
+    };
 }

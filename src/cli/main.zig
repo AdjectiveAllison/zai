@@ -1,7 +1,6 @@
 const std = @import("std");
 const zai = @import("zai");
 const args = @import("args.zig");
-const registry_helper = @import("registry_helper.zig");
 const config_path = @import("config_path.zig");
 
 fn printUsage() !void {
@@ -128,29 +127,27 @@ fn printModelsHelp() !void {
     );
 }
 
-fn handleChat(allocator: std.mem.Allocator, provider: *zai.Provider, provider_name: []const u8, options: args.ChatOptions) !void {
+fn handleChat(allocator: std.mem.Allocator, provider: *zai.Provider, provider_name: []const u8, registry: *zai.Registry, options: args.ChatOptions) !void {
     const stdout = std.io.getStdOut().writer();
     const stderr = std.io.getStdErr().writer();
 
-    // Load registry for model validation
-    const config_file = try config_path.getConfigPath(allocator);
-    defer allocator.free(config_file);
-
-    var registry = try zai.Registry.loadFromFile(allocator, config_file);
-    defer registry.deinit();
-
     // Get model - either from options or try to find a default model with chat capability
     const model_id = if (options.model) |m| m else blk: {
-        const provider_info = registry.getProvider(provider_name) orelse return error.ProviderNotFound;
-        for (provider_info.models) |model| {
+        const provider_spec = registry.getProvider(provider_name) orelse {
+            try stderr.writeAll("Provider specification not found.\n");
+            return error.ProviderSpecNotFound;
+        };
+
+        // Find first model with chat capability
+        for (provider_spec.models) |model| {
             if (model.capabilities.contains(.chat)) {
                 break :blk model.id;
             }
         }
-        try stderr.writeAll("No model specified and no default chat model found.\n");
-        try stderr.writeAll("Please specify a model with --model or add a model with chat capability:\n");
-        try stderr.print("  zai models add {s} <model_name> --id <model_id> --chat\n", .{provider_name});
-        return error.NoModelAvailable;
+
+        try stderr.writeAll("No chat-capable models found for this provider.\n");
+        try stderr.print("Please specify a model with --model or add a model with chat capability:\n  zai models add {s} <model_name> --id <model_id> --chat\n", .{provider_name});
+        return error.NoChatModelsAvailable;
     };
 
     // Construct messages array
@@ -518,7 +515,7 @@ fn handleModels(allocator: std.mem.Allocator, cli_args: []const []const u8) !voi
     }
 }
 
-pub fn main() anyerror!void {
+pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -551,6 +548,16 @@ pub fn main() anyerror!void {
         }
         return;
     }
+
+    // Ensure config directory exists
+    try config_path.ensureConfigDirExists();
+
+    // Load the registry once at startup
+    const config_file = try config_path.getConfigPath(allocator);
+    defer allocator.free(config_file);
+
+    var registry = try zai.Registry.loadFromFile(allocator, config_file);
+    defer registry.deinit();
 
     const options = args.parseArgs(allocator, cli_args) catch |err| {
         const stderr = std.io.getStdErr().writer();
@@ -595,35 +602,28 @@ pub fn main() anyerror!void {
     const stderr = std.io.getStdErr().writer();
     switch (options.command) {
         .chat => {
-            var provider = if (options.provider) |p|
-                registry_helper.getProviderByName(allocator, p) catch |err| {
-                    switch (err) {
-                        error.ProviderNotFound => {
-                            try stderr.print("Provider not found: {s}\n", .{p});
-                            return err;
-                        },
-                        else => return err,
-                    }
+            // Get provider - either specified or default (first)
+            const provider_name = if (options.provider) |p| p else blk: {
+                if (registry.providers.items.len == 0) {
+                    try stderr.writeAll("No providers configured. Please configure a provider first.\n");
+                    return error.NoProvidersConfigured;
                 }
-            else
-                registry_helper.getDefaultProvider(allocator) catch |err| {
-                    switch (err) {
-                        error.NoProvidersConfigured => {
-                            try stderr.writeAll("No providers configured. Please configure a provider first.\n");
-                            return err;
-                        },
-                        else => return err,
-                    }
-                };
-            defer provider.deinit();
-
-            const provider_name = options.provider orelse "default";
-            handleChat(allocator, provider, provider_name, options) catch |err| {
-                switch (err) {
-                    error.NoModelAvailable => return err,
-                    else => return err,
-                }
+                break :blk registry.providers.items[0].name;
             };
+
+            // Initialize the provider
+            try registry.initProvider(provider_name);
+
+            const provider = registry.getProvider(provider_name) orelse {
+                try stderr.print("Provider not found: {s}\n", .{provider_name});
+                return error.ProviderNotFound;
+            };
+
+            if (provider.instance) |instance| {
+                try handleChat(allocator, instance, provider_name, &registry, options);
+            } else {
+                return error.ProviderNotInitialized;
+            }
         },
         .completion, .embedding => {
             try stderr.print("Command not implemented yet: {s}\n", .{@tagName(options.command)});
