@@ -2,6 +2,11 @@
 
 zai is a flexible Zig library for interacting with various AI providers' APIs, offering a unified interface for chat completions, embeddings, and more.
 
+
+## Requirements
+
+- Zig 0.13.0
+
 ## Features
 
 - Multi-provider support:
