@@ -2,4 +2,6 @@ zig-cache/
 zig-out/
 .zig-cache/
 
-cli/
+.aider*
+
+test_registry.json

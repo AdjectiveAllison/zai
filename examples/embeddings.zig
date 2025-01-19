@@ -8,36 +8,36 @@ pub fn main() !void {
     defer std.debug.assert(gpa_state.deinit() == .ok);
     const gpa = gpa_state.allocator();
 
-    var ai: zai.AI = undefined;
-    try ai.init(gpa, zai.Provider.OctoAI);
-    defer ai.deinit();
+    const api_key = try std.process.getEnvVarOwned(gpa, "TOGETHER_API_KEY");
+    defer gpa.free(api_key);
+
+    const provider_config = zai.ProviderConfig{ .OpenAI = .{
+        .api_key = api_key,
+        .base_url = "https://api.together.xyz/v1",
+    } };
+    var provider = try zai.init(gpa, provider_config);
+    defer provider.deinit();
 
     const input_text = "Zig is a general-purpose programming language and toolchain for maintaining robust, optimal, and reusable software.";
 
-    const payload = zai.Embeddings.EmbeddingsPayload{
+    const embedding_options = zai.EmbeddingRequestOptions{
+        .model = "BAAI/bge-large-en-v1.5",
         .input = input_text,
-        .model = "thenlper/gte-large",
     };
 
-    var embeddings: zai.Embeddings = undefined;
-    embeddings.init(gpa);
-    defer embeddings.deinit();
-
-    try embeddings.request(&ai, payload);
+    const embedding = try provider.createEmbedding(embedding_options);
+    defer gpa.free(embedding);
 
     std.debug.print("\nInput text: {s}\n", .{input_text});
     std.debug.print("\nEmbedding vector (first 5 elements): ", .{});
-    for (embeddings.embedding[0..@min(5, embeddings.embedding.len)]) |value| {
+    for (embedding[0..@min(5, embedding.len)]) |value| {
         std.debug.print("{d:.6} ", .{value});
     }
     std.debug.print("...\n", .{});
-    std.debug.print("Embedding vector length: {d}\n", .{embeddings.embedding.len});
+    std.debug.print("Embedding vector length: {d}\n", .{embedding.len});
 
-    std.debug.print("\nUsage:\n", .{});
-    std.debug.print("  Prompt Tokens: {d}\n", .{embeddings.usage.prompt_tokens});
-    std.debug.print("  Total Tokens: {d}\n", .{embeddings.usage.total_tokens});
+    // Note: Usage information is not available in this version of the API
+    // You may need to modify the Provider interface if you want to return usage information
 
-    std.debug.print("\nMetadata:\n", .{});
-    std.debug.print("  ID: {s}\n", .{embeddings.id});
-    std.debug.print("  Created: {d}\n", .{embeddings.created});
+    std.debug.print("\nEmbedding created successfully.\n", .{});
 }

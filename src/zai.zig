@@ -1,12 +1,32 @@
 const std = @import("std");
-pub const AI = @import("AI.zig");
-pub const ChatCompletion = @import("ChatCompletion.zig");
-pub const Embeddings = @import("Embeddings.zig");
-pub const StreamHandler = @import("shared.zig").StreamHandler;
-pub const Providers = @import("providers.zig");
-pub const Provider = Providers.Provider;
-pub const Message = @import("shared.zig").Message;
-pub const CompletionPayload = @import("shared.zig").CompletionPayload;
+
+// New imports
+pub const config = @import("config.zig");
+pub const core = @import("core.zig");
+pub const providers = @import("providers.zig");
+pub const requests = @import("requests.zig");
+pub const registry = @import("registry.zig");
+
+// Re-export important types
+pub const Provider = providers.Provider;
+pub const ProviderConfig = config.ProviderConfig;
+pub const ConfigManager = config.ConfigManager;
+pub const ProviderType = core.ProviderType;
+pub const Message = core.Message;
+pub const StreamHandler = core.StreamHandler;
+pub const ZaiError = core.ZaiError;
+pub const Registry = registry.Registry;
+pub const ModelSpec = registry.ModelSpec;
+pub const ProviderSpec = registry.ProviderSpec;
+
+pub const ChatRequestOptions = requests.ChatRequestOptions;
+pub const CompletionRequestOptions = requests.CompletionRequestOptions;
+pub const EmbeddingRequestOptions = requests.EmbeddingRequestOptions;
+
+// Initialization function
+pub fn init(allocator: std.mem.Allocator, provider_config: ProviderConfig) !Provider {
+    return Provider.init(allocator, provider_config);
+}
 
 //TODO: Handle organization in relevant cases(OpenAI)
 // If ogranization is passed, it's simply a header to openAI:

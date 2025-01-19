@@ -1,50 +1,73 @@
-// This file is auto-generated. Do not edit manually.
-
 const std = @import("std");
+const config = @import("config.zig");
+const core = @import("core.zig");
+const requests = @import("requests.zig");
+const OpenAIProvider = @import("providers/OpenAIProvider.zig");
+const AmazonBedrockProvider = @import("providers/AmazonBedrockProvider.zig");
 
-pub const Provider = enum {
-    OpenAI,
-    OctoAI,
-    TogetherAI,
-    OpenRouter,
-};
+pub const Provider = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
 
-pub const ModelType = enum { chat, completion, embedding };
-
-pub const ProviderInfo = struct {
-    base_url: []const u8,
-    api_key_env_var: []const u8,
-    supported_model_types: []const ModelType,
-};
-
-pub const ModelInfo = struct {
-    display_name: []const u8,
-    name: []const u8,
-    id: []const u8,
-    type: ModelType,
-    cost_per_million_tokens: f32,
-    max_token_length: u32,
-};
-
-pub const OpenAI = @import("providers/OpenAI.zig");
-pub const OctoAI = @import("providers/OctoAI.zig");
-pub const TogetherAI = @import("providers/TogetherAI.zig");
-pub const OpenRouter = @import("providers/OpenRouter.zig");
-
-pub fn getProviderInfo(provider: Provider) ProviderInfo {
-    return switch (provider) {
-        .OpenAI => OpenAI.info,
-        .OctoAI => OctoAI.info,
-        .TogetherAI => TogetherAI.info,
-        .OpenRouter => OpenRouter.info,
+    pub const VTable = struct {
+        deinit: *const fn (ctx: *anyopaque) void,
+        completion: *const fn (ctx: *anyopaque, options: requests.CompletionRequestOptions) Error![]const u8,
+        completionStream: *const fn (ctx: *anyopaque, options: requests.CompletionRequestOptions, writer: std.io.AnyWriter) Error!void,
+        chat: *const fn (ctx: *anyopaque, options: requests.ChatRequestOptions) Error![]const u8,
+        chatStream: *const fn (ctx: *anyopaque, options: requests.ChatRequestOptions, writer: std.io.AnyWriter) Error!void,
+        createEmbedding: *const fn (ctx: *anyopaque, options: requests.EmbeddingRequestOptions) Error![]f32,
     };
-}
 
-pub fn getModels(provider: Provider) []const ModelInfo {
-    return switch (provider) {
-        .OpenAI => OpenAI.getAllModels(),
-        .OctoAI => OctoAI.getAllModels(),
-        .TogetherAI => TogetherAI.getAllModels(),
-        .OpenRouter => OpenRouter.getAllModels(),
-    };
-}
+    pub const Error = core.ZaiError;
+
+    pub fn init(allocator: std.mem.Allocator, provider_config: config.ProviderConfig) !Provider {
+        return switch (provider_config) {
+            .OpenAI => |openai_config| OpenAIProvider.init(allocator, openai_config),
+            .Anthropic => @panic("Anthropic provider not implemented"),
+            .GoogleVertex => @panic("Google Vertex provider not implemented"),
+            .AmazonBedrock => |amazon_config| AmazonBedrockProvider.init(allocator, amazon_config),
+            // Will use zml for this once it's setup: tracking issue: https://github.com/zml/zml/issues/67
+            .Local => @panic("Local provider not implemented"),
+        };
+    }
+
+    pub fn deinit(self: *Provider) void {
+        self.vtable.deinit(self.ptr);
+    }
+
+    pub fn completion(self: *Provider, options: requests.CompletionRequestOptions) Error![]const u8 {
+        return self.vtable.completion(self.ptr, options);
+    }
+
+    pub fn completionStream(self: *Provider, options: requests.CompletionRequestOptions, writer: anytype) Error!void {
+        const Writer = std.io.GenericWriter(@TypeOf(writer), Error, struct {
+            fn write(ctx: @TypeOf(writer), bytes: []const u8) Error!usize {
+                return ctx.write(bytes) catch |err| switch (err) {
+                    else => Error.UnexpectedError,
+                };
+            }
+        }.write);
+        var generic_writer = Writer{ .context = writer };
+        return self.vtable.completionStream(self.ptr, options, generic_writer.any());
+    }
+
+    pub fn chat(self: *Provider, options: requests.ChatRequestOptions) Error![]const u8 {
+        return self.vtable.chat(self.ptr, options);
+    }
+
+    pub fn chatStream(self: *Provider, options: requests.ChatRequestOptions, writer: anytype) Error!void {
+        const Writer = std.io.GenericWriter(@TypeOf(writer), Error, struct {
+            fn write(ctx: @TypeOf(writer), bytes: []const u8) Error!usize {
+                return ctx.write(bytes) catch |err| switch (err) {
+                    else => Error.UnexpectedError,
+                };
+            }
+        }.write);
+        var generic_writer = Writer{ .context = writer };
+        return self.vtable.chatStream(self.ptr, options, generic_writer.any());
+    }
+
+    pub fn createEmbedding(self: *Provider, options: requests.EmbeddingRequestOptions) Error![]f32 {
+        return self.vtable.createEmbedding(self.ptr, options);
+    }
+};
