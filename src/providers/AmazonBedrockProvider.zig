@@ -36,6 +36,48 @@ const AmazonPayload = struct {
     };
 };
 
+pub const EventStreamError = error{
+    InsufficientData,
+    MalformedMessage,
+};
+
+pub const EventStreamMessage = struct {
+    total_length: u32,
+    header_length: u32,
+    // For now we only extract the payload; you could parse headers later if needed.
+    payload: []const u8,
+};
+
+/// Parses an event-stream message out of a given byte slice.
+///
+/// The expected format is:
+///   • First 4 bytes: total message length (big-endian)
+///   • Next 4 bytes: header block length (big-endian)
+///   • Next 4 bytes: prelude checksum (ignored)
+///   • Headers (header block length bytes)
+///   • Payload: the JSON‐encoded data (message payload)
+///   • Trailing 4 bytes: message checksum (ignored)
+pub fn parseEventStreamMessage(buffer: []u8) !EventStreamMessage {
+    // We require at least 12 bytes (for total_length, header_length, and prelude checksum)
+    if (buffer.len < 12) return EventStreamError.InsufficientData;
+    const total_length = std.mem.readInt(u32, buffer[0..4], .big);
+    const header_length = std.mem.readInt(u32, buffer[4..8], .big);
+    if (buffer.len < total_length) return EventStreamError.InsufficientData;
+    // Skip the 4-byte prelude checksum at offset 8..12.
+    const header_start = 12;
+    const header_end = header_start + header_length;
+    // Ensure there's room for the payload as well as trailing 4-byte checksum.
+    if (header_end > total_length - 4) return EventStreamError.MalformedMessage;
+    const payload_start = header_end;
+    const payload_end = total_length - 4; // leave off trailing checksum
+    const payload = buffer[payload_start..payload_end];
+    return EventStreamMessage{
+        .total_length = total_length,
+        .header_length = header_length,
+        .payload = payload,
+    };
+}
+
 const SystemBlock = struct {
     // guardContent can be added later if I want it, but I don't care right now.
     text: []const u8,
@@ -460,14 +502,14 @@ fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWr
     defer stream_buffer.deinit();
 
     while (true) {
-        // Need at least 4 bytes to read length
+        // Ensure we have at least 4 bytes to read the message length.
         if (stream_buffer.items.len < 4) {
             const bytes_read = req.reader().read(&buffer) catch |err| {
                 return switch (err) {
                     error.ConnectionTimedOut, error.ConnectionResetByPeer => Provider.Error.NetworkError,
                     error.TlsFailure, error.TlsAlert => Provider.Error.NetworkError,
                     error.UnexpectedReadFailure => Provider.Error.UnexpectedError,
-                    error.EndOfStream => break, // End of stream, exit the loop
+                    error.EndOfStream => break, // End of stream; exit loop.
                     error.HttpChunkInvalid, error.HttpHeadersOversize, error.DecompressionFailure, error.InvalidTrailers => Provider.Error.ApiError,
                 };
             };
@@ -476,73 +518,64 @@ fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWr
             continue;
         }
 
-        // First 4 bytes are big-endian length
+        // First 4 bytes hold the big-endian message length.
         const msg_len = std.mem.readInt(u32, stream_buffer.items[0..4], .big);
-
-        // Wait until we have the full message
         if (stream_buffer.items.len < msg_len) {
             const bytes_read = req.reader().read(&buffer) catch |err| {
                 return switch (err) {
                     error.ConnectionTimedOut, error.ConnectionResetByPeer => Provider.Error.NetworkError,
                     error.TlsFailure, error.TlsAlert => Provider.Error.NetworkError,
                     error.UnexpectedReadFailure => Provider.Error.UnexpectedError,
-                    error.EndOfStream => break, // End of stream, exit the loop
+                    error.EndOfStream => break,
                     error.HttpChunkInvalid, error.HttpHeadersOversize, error.DecompressionFailure, error.InvalidTrailers => Provider.Error.ApiError,
                 };
             };
-            if (bytes_read == 0) break; // End of stream
+            if (bytes_read == 0) break;
             try stream_buffer.appendSlice(buffer[0..bytes_read]);
             continue;
         }
 
-        // Look for JSON in this chunk
-        const message = stream_buffer.items[0..msg_len];
-        if (std.mem.indexOf(u8, message, "{")) |json_start| {
-            // Find the last } in the message
-            var last_brace: ?usize = null;
-            var i: usize = message.len;
-            while (i > json_start) {
-                i -= 1;
-                if (message[i] == '}') {
-                    last_brace = i;
-                    break;
-                }
+        const msg_slice = stream_buffer.items[0..msg_len];
+        const event = parseEventStreamMessage(msg_slice) catch |err| {
+            // Convert our event-stream errors to the primary error type.
+            switch (err) {
+                EventStreamError.InsufficientData, EventStreamError.MalformedMessage => return Provider.Error.ParseError,
             }
+        };
 
-            if (last_brace) |json_end| {
-                const json = message[json_start .. json_end + 1];
-                const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, json, .{}) catch |err| {
-                    stream_buffer.replaceRange(0, msg_len, &[_]u8{}) catch |replace_err| {
-                        return switch (replace_err) {
-                            error.OutOfMemory => Provider.Error.OutOfMemory,
-                        };
-                    };
-                    if (err == error.InvalidCharacter) {
-                        // Skip invalid JSON and continue
-                        continue;
-                    }
-                    return Provider.Error.ParseError;
+        const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, event.payload, .{}) catch |err| {
+            stream_buffer.replaceRange(0, msg_len, &[_]u8{}) catch |replace_err| {
+                return switch (replace_err) {
+                    error.OutOfMemory => Provider.Error.OutOfMemory,
                 };
-                defer parsed.deinit();
-
-                // Check for different types of responses
-                if (parsed.value.object.get("delta")) |content| {
-                    if (content.object.get("text")) |text| {
-                        writer.writeAll(text.string) catch |err| {
-                            return switch (err) {
-                                error.OutOfMemory => Provider.Error.OutOfMemory,
-                                else => Provider.Error.UnexpectedError,
-                            };
-                        };
-                    }
-                } else if (parsed.value.object.get("stopReason")) |_| {
-                    break; // End of stream
-                }
+            };
+            if (err == error.InvalidCharacter) {
+                continue;
             }
+            return Provider.Error.ParseError;
+        };
+        defer parsed.deinit();
+
+        // Process the parsed JSON as before.
+        if (parsed.value.object.get("delta")) |content| {
+            if (content.object.get("text")) |text| {
+                writer.writeAll(text.string) catch |err| {
+                    return switch (err) {
+                        error.OutOfMemory => Provider.Error.OutOfMemory,
+                        else => Provider.Error.UnexpectedError,
+                    };
+                };
+            }
+        } else if (parsed.value.object.get("stopReason")) |_| {
+            break;
         }
 
-        // Remove processed message
-        try stream_buffer.replaceRange(0, msg_len, &[_]u8{});
+        // Remove the processed event from the buffer.
+        stream_buffer.replaceRange(0, msg_len, &[_]u8{}) catch |err| {
+            return switch (err) {
+                error.OutOfMemory => Provider.Error.OutOfMemory,
+            };
+        };
     }
 }
 
