@@ -46,7 +46,6 @@ fn setAuthorizationHeader(self: *Self) !void {
 
 fn setExtraHeaders(self: *Self) !void {
     try self.extra_headers.append(.{ .name = "User-Agent", .value = "openai-zig/0.1.0" });
-    try self.extra_headers.append(.{ .name = "Content-Type", .value = "application/json" });
     if (self.config.organization) |org| {
         try self.extra_headers.append(.{ .name = "OpenAI-Organization", .value = org });
     }
