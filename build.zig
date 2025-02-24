@@ -38,6 +38,18 @@ pub fn build(b: *std.Build) void {
     const build_chat_bedrock_step = b.step("chat-bedrock", "Build the Amazon Bedrock chat example (Streaming)");
     build_chat_bedrock_step.dependOn(&build_chat_bedrock.step);
 
+    // Anthropic chat example
+    const chat_anthropic = b.addExecutable(.{
+        .name = "chat-anthropic",
+        .root_source_file = b.path("examples/chat_anthropic.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    chat_anthropic.root_module.addImport("zai", zai_mod);
+    const build_chat_anthropic = b.addInstallArtifact(chat_anthropic, .{});
+    const build_chat_anthropic_step = b.step("chat-anthropic", "Build the Anthropic chat example");
+    build_chat_anthropic_step.dependOn(&build_chat_anthropic.step);
+
     // Completion example
     const completion = b.addExecutable(.{
         .name = "completion",

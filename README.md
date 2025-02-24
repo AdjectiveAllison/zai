@@ -12,7 +12,8 @@ zai is a flexible Zig library for interacting with various AI providers' APIs, o
 - Multi-provider support:
   - OpenAI-compatible APIs (OpenAI, Together.ai, OpenRouter)
   - Amazon Bedrock
-  - Support coming soon for Anthropic, Google Vertex AI, and local models via zml
+  - Anthropic
+  - Support coming soon for Google Vertex AI and local models via zml
 - Unified interface across providers
 - Streaming support for real-time responses
 - Provider and model registry for easy configuration
@@ -70,6 +71,11 @@ const bedrock_config = zai.ProviderConfig{ .AmazonBedrock = .{
     .secret_access_key = "your-secret-key",
     .region = "us-west-2",
 }};
+
+// Anthropic configuration
+const anthropic_config = zai.ProviderConfig{ .Anthropic = .{
+    .api_key = "your-anthropic-api-key",
+}};
 ```
 
 ### Chat Example
@@ -118,9 +124,9 @@ pub fn main() !void {
 |---------------|------|-------------|------------|-------------------|------------|
 | OpenAI-compatible | ✅   | ✅          | ✅         | ✅                | ✅         |
 | Amazon Bedrock    | ✅   | ✅          | ❌         | ❌                | ❌         |
-| Anthropic*       | ❌   | ❌          | ❌         | ❌                | ❌         |
-| Google Vertex*   | ❌   | ❌          | ❌         | ❌                | ❌         |
-| Local (zml)*     | ❌   | ❌          | ❌         | ❌                | ❌         |
+| Anthropic         | ✅   | ✅          | ❌         | ❌                | ❌         |
+| Google Vertex*    | ❌   | ❌          | ❌         | ❌                | ❌         |
+| Local (zml)*      | ❌   | ❌          | ❌         | ❌                | ❌         |
 
 \* Coming soon
 
@@ -152,6 +158,7 @@ zai <command> --help
 Check out the `examples/` directory for more detailed examples:
 - Chat using OpenAI-compatible APIs (`examples/chat_openai.zig`)
 - Chat using Amazon Bedrock (`examples/chat_bedrock.zig`)
+- Chat using Anthropic (`examples/chat_anthropic.zig`)
 - Embeddings generation (`examples/embeddings.zig`)
 - Provider registry management (`examples/registry.zig`)
 - And more!
@@ -161,7 +168,7 @@ Check out the `examples/` directory for more detailed examples:
 Contributions are welcome! Some areas that need work:
 - Adding tests
 - Improving CLI provider configuration workflow
-- Implementing additional providers (Anthropic, Google Vertex AI)
+- Implementing additional providers (Google Vertex AI)
 - Local model support via zml integration
 - Documentation improvements
 

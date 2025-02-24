@@ -4,6 +4,7 @@ const core = @import("core.zig");
 const requests = @import("requests.zig");
 const OpenAIProvider = @import("providers/OpenAIProvider.zig");
 const AmazonBedrockProvider = @import("providers/AmazonBedrockProvider.zig");
+const AnthropicProvider = @import("providers/AnthropicProvider.zig");
 
 pub const Provider = struct {
     ptr: *anyopaque,
@@ -23,7 +24,7 @@ pub const Provider = struct {
     pub fn init(allocator: std.mem.Allocator, provider_config: config.ProviderConfig) !Provider {
         return switch (provider_config) {
             .OpenAI => |openai_config| OpenAIProvider.init(allocator, openai_config),
-            .Anthropic => @panic("Anthropic provider not implemented"),
+            .Anthropic => |anthropic_config| AnthropicProvider.init(allocator, anthropic_config),
             .GoogleVertex => @panic("Google Vertex provider not implemented"),
             .AmazonBedrock => |amazon_config| AmazonBedrockProvider.init(allocator, amazon_config),
             // Will use zml for this once it's setup: tracking issue: https://github.com/zml/zml/issues/67
