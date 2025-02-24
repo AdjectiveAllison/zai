@@ -122,7 +122,6 @@ pub const Registry = struct {
                 },
                 .Anthropic => |*anthropic_config| {
                     self.allocator.free(anthropic_config.api_key);
-                    self.allocator.free(anthropic_config.anthropic_version);
                 },
                 .GoogleVertex => |*google_config| {
                     self.allocator.free(google_config.api_key);
@@ -237,24 +236,25 @@ pub const Registry = struct {
             } };
         } else if (std.mem.eql(u8, config_type, "anthropic")) {
             const api_key = json_obj.get("api_key") orelse return error.MissingRequiredField;
-            const anthropic_version = json_obj.get("anthropic_version") orelse return error.MissingRequiredField;
+            const default_max_tokens_json = json_obj.get("default_max_tokens") orelse return error.MissingRequiredField;
+            
+            // Check that default_max_tokens is a number
+            const default_max_tokens = switch (default_max_tokens_json) {
+                .integer => @as(u32, @intCast(default_max_tokens_json.integer)),
+                else => return error.MissingRequiredField, 
+            };
 
             var api_key_dup: ?[]const u8 = null;
-            var anthropic_version_dup: ?[]const u8 = null;
             errdefer {
                 if (api_key_dup) |key| allocator.free(key);
-                if (anthropic_version_dup) |ver| allocator.free(ver);
             }
 
             api_key_dup = try allocator.dupe(u8, api_key.string);
             errdefer allocator.free(api_key_dup.?);
 
-            anthropic_version_dup = try allocator.dupe(u8, anthropic_version.string);
-            errdefer allocator.free(anthropic_version_dup.?);
-
             return ProviderConfig{ .Anthropic = .{
                 .api_key = api_key_dup.?,
-                .anthropic_version = anthropic_version_dup.?,
+                .default_max_tokens = default_max_tokens,
             } };
         } else if (std.mem.eql(u8, config_type, "google_vertex")) {
             const api_key = json_obj.get("api_key") orelse return error.MissingRequiredField;
@@ -368,7 +368,6 @@ pub const Registry = struct {
                     },
                     .Anthropic => |*anthropic_config| {
                         allocator.free(anthropic_config.api_key);
-                        allocator.free(anthropic_config.anthropic_version);
                     },
                     .GoogleVertex => |*google_config| {
                         allocator.free(google_config.api_key);
@@ -510,12 +509,9 @@ pub const Registry = struct {
                 const api_key = try self.allocator.dupe(u8, anthropic_config.api_key);
                 errdefer self.allocator.free(api_key);
 
-                const anthropic_version = try self.allocator.dupe(u8, anthropic_config.anthropic_version);
-                errdefer self.allocator.free(anthropic_version);
-
                 break :blk ProviderConfig{ .Anthropic = .{
                     .api_key = api_key,
-                    .anthropic_version = anthropic_version,
+                    .default_max_tokens = anthropic_config.default_max_tokens,
                 } };
             },
             .GoogleVertex => |google_config| blk: {
@@ -556,7 +552,6 @@ pub const Registry = struct {
             },
             .Anthropic => |*anthropic_config| {
                 self.allocator.free(anthropic_config.api_key);
-                self.allocator.free(anthropic_config.anthropic_version);
             },
             .GoogleVertex => |*google_config| {
                 self.allocator.free(google_config.api_key);

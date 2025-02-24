@@ -79,11 +79,8 @@ fn deinit(ctx: *anyopaque) void {
 fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 {
     const self: *Self = @ptrCast(@alignCast(ctx));
     
-    // Anthropic requires max_tokens to be set
-    if (options.max_tokens == null) {
-        std.debug.print("Error: max_tokens is required for Anthropic API\n", .{});
-        return Provider.Error.InvalidRequest;
-    }
+    // If max_tokens isn't provided, use the default from the config
+    const actual_max_tokens = options.max_tokens orelse self.config.default_max_tokens;
 
     var client = std.http.Client{ .allocator = self.allocator };
     defer client.deinit();
@@ -127,7 +124,7 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
     var payload: AnthropicPayload = .{
         .model = options.model,
         .messages = anthropic_messages_final,
-        .max_tokens = options.max_tokens,
+        .max_tokens = actual_max_tokens,
         .temperature = options.temperature,
         .top_p = options.top_p,
         .stop_sequences = options.stop,
@@ -241,11 +238,8 @@ fn chat(ctx: *anyopaque, options: ChatRequestOptions) Provider.Error![]const u8 
 fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWriter) Provider.Error!void {
     const self: *Self = @ptrCast(@alignCast(ctx));
     
-    // Anthropic requires max_tokens to be set
-    if (options.max_tokens == null) {
-        std.debug.print("Error: max_tokens is required for Anthropic API\n", .{});
-        return Provider.Error.InvalidRequest;
-    }
+    // If max_tokens isn't provided, use the default from the config
+    const actual_max_tokens = options.max_tokens orelse self.config.default_max_tokens;
 
     var client = std.http.Client{ .allocator = self.allocator };
     defer client.deinit();
@@ -289,7 +283,7 @@ fn chatStream(ctx: *anyopaque, options: ChatRequestOptions, writer: std.io.AnyWr
     var payload: AnthropicPayload = .{
         .model = options.model,
         .messages = anthropic_messages_final,
-        .max_tokens = options.max_tokens,
+        .max_tokens = actual_max_tokens,
         .temperature = options.temperature,
         .top_p = options.top_p,
         .stop_sequences = options.stop,

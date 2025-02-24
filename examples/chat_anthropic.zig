@@ -16,6 +16,7 @@ pub fn main() !void {
     // Configuration for Anthropic
     const provider_config = zai.ProviderConfig{ .Anthropic = .{
         .api_key = api_key,
+        .default_max_tokens = 8000, // Default to 8k tokens
     }};
 
     // Initialize provider
@@ -38,7 +39,6 @@ pub fn main() !void {
     const chat_options = zai.ChatRequestOptions{
         .model = "claude-3-7-sonnet-20250219", // Use Claude 3.7 Sonnet
         .messages = &messages,
-        .max_tokens = 1000, // Required by Anthropic
         .temperature = 0.7,
         .stream = true, // Try streaming mode
     };
@@ -52,7 +52,6 @@ pub fn main() !void {
     const chat_options_no_stream = zai.ChatRequestOptions{
         .model = "claude-3-7-sonnet-20250219", // Use Claude 3.7 Sonnet
         .messages = &messages,
-        .max_tokens = 1000, // Required by Anthropic
         .temperature = 0.7,
         .stream = false,
     };

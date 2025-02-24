@@ -305,7 +305,6 @@ fn handleProvider(allocator: std.mem.Allocator, cli_args: []const []const u8) !v
                     },
                     .Anthropic => |*anthropic_config| {
                         allocator.free(anthropic_config.api_key);
-                        allocator.free(anthropic_config.anthropic_version);
                     },
                     .GoogleVertex => |*google_config| {
                         allocator.free(google_config.api_key);

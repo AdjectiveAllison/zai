@@ -75,6 +75,7 @@ const bedrock_config = zai.ProviderConfig{ .AmazonBedrock = .{
 // Anthropic configuration
 const anthropic_config = zai.ProviderConfig{ .Anthropic = .{
     .api_key = "your-anthropic-api-key",
+    .default_max_tokens = 8000, // Default max tokens limit
 }};
 ```
 
