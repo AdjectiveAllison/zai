@@ -82,6 +82,20 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !ChatOp
     }
 
     if (!prompt_found and command.requiresPrompt()) {
+        // Check if we can read from stdin
+        const stdin = std.io.getStdIn();
+        if (!stdin.isTty()) {
+            var buffer = std.ArrayList(u8).init(allocator);
+            defer buffer.deinit();
+            try stdin.reader().readAllArrayList(&buffer, std.math.maxInt(usize));
+            // Trim trailing newlines
+            var content = buffer.items;
+            while (content.len > 0 and (content[content.len - 1] == '\n' or content[content.len - 1] == '\r')) {
+                content.len -= 1;
+            }
+            options.prompt = try allocator.dupe(u8, content);
+            return options;
+        }
         return error.MissingPrompt;
     }
 

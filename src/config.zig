@@ -87,10 +87,9 @@ pub const ProviderConfig = union(core.ProviderType) {
             } };
         } else if (std.mem.eql(u8, provider_type, "anthropic")) {
             var api_key: ?[]const u8 = null;
-            var anthropic_version: ?[]const u8 = null;
+            var default_max_tokens: ?u32 = null;
             errdefer {
                 if (api_key) |key| allocator.free(key);
-                if (anthropic_version) |ver| allocator.free(ver);
             }
 
             while (i < options.len) : (i += 2) {
@@ -101,17 +100,19 @@ pub const ProviderConfig = union(core.ProviderType) {
                 if (std.mem.eql(u8, arg, "--api-key")) {
                     if (api_key) |key| allocator.free(key);
                     api_key = try allocator.dupe(u8, value);
-                } else if (std.mem.eql(u8, arg, "--anthropic-version")) {
-                    if (anthropic_version) |ver| allocator.free(ver);
-                    anthropic_version = try allocator.dupe(u8, value);
+                } else if (std.mem.eql(u8, arg, "--default-max-tokens")) {
+                    default_max_tokens = std.fmt.parseInt(u32, value, 10) catch |err| switch (err) {
+                        error.Overflow, error.InvalidCharacter => return error.InvalidProviderType,
+                    };
                 }
             }
 
-            if (api_key == null or anthropic_version == null) return error.MissingRequiredField;
+            if (api_key == null) return error.MissingRequiredField;
+            if (default_max_tokens == null) return error.MissingRequiredField;
 
             return ProviderConfig{ .Anthropic = .{
                 .api_key = api_key.?,
-                .anthropic_version = anthropic_version.?,
+                .default_max_tokens = default_max_tokens.?,
             } };
         } else if (std.mem.eql(u8, provider_type, "google_vertex")) {
             var api_key: ?[]const u8 = null;
@@ -186,7 +187,6 @@ pub const ProviderConfig = union(core.ProviderType) {
             },
             .Anthropic => |*anthropic_config| {
                 allocator.free(anthropic_config.api_key);
-                allocator.free(anthropic_config.anthropic_version);
             },
             .GoogleVertex => |*google_config| {
                 allocator.free(google_config.api_key);
@@ -219,8 +219,8 @@ pub const ProviderConfig = union(core.ProviderType) {
                 try serializer.write("anthropic");
                 try serializer.objectField("api_key");
                 try serializer.write(c.api_key);
-                try serializer.objectField("anthropic_version");
-                try serializer.write(c.anthropic_version);
+                try serializer.objectField("default_max_tokens");
+                try serializer.write(c.default_max_tokens);
             },
             .GoogleVertex => |c| {
                 try serializer.objectField("type");
@@ -261,7 +261,7 @@ pub const OpenAIConfig = struct {
 
 pub const AnthropicConfig = struct {
     api_key: []const u8,
-    anthropic_version: []const u8,
+    default_max_tokens: u32,
 };
 
 pub const GoogleVertexConfig = struct {
