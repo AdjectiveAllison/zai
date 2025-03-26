@@ -520,6 +520,31 @@ zai chat --model claude-3-sonnet "How do I implement binary search in Zig?"
 zai completion --stream false "The best thing about Zig is"
 ```
 
+### Shell Completions
+
+The zai CLI provides shell completion scripts for fish, bash, and zsh:
+
+```sh
+# Generate completions for fish shell
+zai completions fish > ~/.config/fish/completions/zai.fish
+
+# Generate completions for bash
+zai completions bash > ~/.bash_completion.d/zai
+
+# Generate completions for zsh 
+zai completions zsh > ~/.zsh/completions/_zai
+
+# Install completions directly (creates directories if needed)
+zai completions fish --install
+zai completions bash --install
+zai completions zsh --install
+```
+
+After installing completions, you can use tab completion for:
+- Main commands and subcommands
+- Provider and model names
+- Command options and flags
+
 ## Provider Feature Support Matrix
 
 Different providers support different features. Here's the current support status:

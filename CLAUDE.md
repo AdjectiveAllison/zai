@@ -28,4 +28,5 @@
 - Build the CLI: `zig build cli`
 - Run the CLI directly: `./zig-out/bin/zai <command> [options] [prompt]`
 - Test with piped input: `cat file.txt | ./zig-out/bin/zai chat "Your prompt"`
+- Test shell completions: `./zig-out/bin/zai completions fish` or `./zig-out/bin/zai completions bash`
 - Important: Do NOT run via `zig build cli -- <args>` as that doesn't execute the binary correctly

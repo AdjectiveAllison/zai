@@ -139,7 +139,7 @@ pub fn main() !void {
 The zai CLI provides commands for managing providers, models, and making API calls:
 
 ```sh
-# Add a provider (Idk if this works or not yet)
+# Add a provider
 zai provider add openai --api-key "your-key" --base-url "https://api.openai.com/v1"
 
 # Add a model to a provider
@@ -165,6 +165,14 @@ zai chat --system-message "You are a pirate." "Tell me about sailing."
 # Pipe content from other commands or files
 cat document.txt | zai chat "Summarize this:"
 git diff | zai chat "Explain these changes:"
+
+# Generate shell completions
+zai completions fish > ~/.config/fish/completions/zai.fish
+zai completions bash > ~/.bash_completion.d/zai
+zai completions zsh > ~/.zsh/completions/_zai
+
+# Install completions directly
+zai completions fish --install
 ```
 
 See more CLI examples and documentation by running:

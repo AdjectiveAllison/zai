@@ -139,6 +139,88 @@ fn generateFishCompletions(allocator: std.mem.Allocator) ![]const u8 {
     try writer.writeAll(
         \\# zai fish completion script
         \\
+        \\# Helper functions for dynamic completions
+        \\function __zai_get_providers
+        \\    # Cache for 1 hour (3600 seconds)
+        \\    set cache_file "$HOME/.cache/zai/providers_cache"
+        \\    set cache_dir (dirname $cache_file)
+        \\    
+        \\    # Create cache directory if it doesn't exist
+        \\    if not test -d $cache_dir
+        \\        mkdir -p $cache_dir
+        \\    end
+        \\    
+        \\    # Use cache if it exists and is less than 1 hour old
+        \\    if test -f $cache_file; and test (math (date +%s) - (stat -c %Y $cache_file)) -lt 3600
+        \\        cat $cache_file
+        \\        return
+        \\    end
+        \\    
+        \\    # Otherwise, get providers and cache the result
+        \\    if set -l providers (zai completions fish --list-providers 2>/dev/null)
+        \\        echo $providers > $cache_file
+        \\        echo $providers
+        \\    end
+        \\end
+        \\
+        \\function __zai_get_models
+        \\    set -l provider $argv[1]
+        \\    
+        \\    # Cache for 1 hour (3600 seconds)
+        \\    set cache_file "$HOME/.cache/zai/models_cache"
+        \\    if test -n "$provider"
+        \\        set cache_file "$HOME/.cache/zai/models_"(echo $provider)"_cache"
+        \\    end
+        \\    set cache_dir (dirname $cache_file)
+        \\    
+        \\    # Create cache directory if it doesn't exist
+        \\    if not test -d $cache_dir
+        \\        mkdir -p $cache_dir
+        \\    end
+        \\    
+        \\    # Use cache if it exists and is less than 1 hour old
+        \\    if test -f $cache_file; and test (math (date +%s) - (stat -c %Y $cache_file)) -lt 3600
+        \\        cat $cache_file
+        \\        return
+        \\    end
+        \\    
+        \\    # Otherwise, get models and cache the result
+        \\    if test -n "$provider"
+        \\        if set -l models (zai completions fish --list-models $provider 2>/dev/null)
+        \\            echo $models > $cache_file
+        \\            echo $models
+        \\        end
+        \\    else
+        \\        if set -l models (zai completions fish --list-models 2>/dev/null)
+        \\            echo $models > $cache_file
+        \\            echo $models
+        \\        end
+        \\    end
+        \\end
+        \\
+        \\function __zai_get_prompts
+        \\    # Cache for 1 hour (3600 seconds)
+        \\    set cache_file "$HOME/.cache/zai/prompts_cache"
+        \\    set cache_dir (dirname $cache_file)
+        \\    
+        \\    # Create cache directory if it doesn't exist
+        \\    if not test -d $cache_dir
+        \\        mkdir -p $cache_dir
+        \\    end
+        \\    
+        \\    # Use cache if it exists and is less than 1 hour old
+        \\    if test -f $cache_file; and test (math (date +%s) - (stat -c %Y $cache_file)) -lt 3600
+        \\        cat $cache_file
+        \\        return
+        \\    end
+        \\    
+        \\    # Otherwise, get prompts and cache the result
+        \\    if set -l prompts (zai completions fish --list-prompts 2>/dev/null)
+        \\        echo $prompts > $cache_file
+        \\        echo $prompts
+        \\    end
+        \\end
+        \\
         \\# Define the main command completions
         \\complete -c zai -f
         \\
@@ -158,19 +240,22 @@ fn generateFishCompletions(allocator: std.mem.Allocator) ![]const u8 {
         \\complete -c zai -n "__fish_seen_subcommand_from completions" -l install -d "Install completions to default location"
         \\
         \\# chat command options
-        \\complete -c zai -n "__fish_seen_subcommand_from chat" -l provider -a "(zai completions fish --list-providers)" -d "Select AI provider"
-        \\complete -c zai -n "__fish_seen_subcommand_from chat" -l model -a "(zai completions fish --list-models)" -d "Select specific model"
+        \\complete -c zai -n "__fish_seen_subcommand_from chat" -s h -l help -d "Show help for chat command"
+        \\complete -c zai -n "__fish_seen_subcommand_from chat" -l provider -a "(__zai_get_providers)" -d "Select AI provider"
+        \\complete -c zai -n "__fish_seen_subcommand_from chat" -l model -a "(__zai_get_models)" -d "Select specific model"
         \\complete -c zai -n "__fish_seen_subcommand_from chat" -l system-message -d "Set system message for chat"
         \\complete -c zai -n "__fish_seen_subcommand_from chat" -l stream -a "true false" -d "Enable/disable streaming"
         \\
         \\# completion command options
-        \\complete -c zai -n "__fish_seen_subcommand_from completion" -l provider -a "(zai completions fish --list-providers)" -d "Select AI provider"
-        \\complete -c zai -n "__fish_seen_subcommand_from completion" -l model -a "(zai completions fish --list-models)" -d "Select specific model"
+        \\complete -c zai -n "__fish_seen_subcommand_from completion" -s h -l help -d "Show help for completion command"
+        \\complete -c zai -n "__fish_seen_subcommand_from completion" -l provider -a "(__zai_get_providers)" -d "Select AI provider"
+        \\complete -c zai -n "__fish_seen_subcommand_from completion" -l model -a "(__zai_get_models)" -d "Select specific model"
         \\complete -c zai -n "__fish_seen_subcommand_from completion" -l stream -a "true false" -d "Enable/disable streaming"
         \\
         \\# embedding command options
-        \\complete -c zai -n "__fish_seen_subcommand_from embedding" -l provider -a "(zai completions fish --list-providers)" -d "Select AI provider"
-        \\complete -c zai -n "__fish_seen_subcommand_from embedding" -l model -a "(zai completions fish --list-models)" -d "Select specific model"
+        \\complete -c zai -n "__fish_seen_subcommand_from embedding" -s h -l help -d "Show help for embedding command"
+        \\complete -c zai -n "__fish_seen_subcommand_from embedding" -l provider -a "(__zai_get_providers)" -d "Select AI provider"
+        \\complete -c zai -n "__fish_seen_subcommand_from embedding" -l model -a "(__zai_get_models)" -d "Select specific model"
         \\
         \\# provider subcommands
         \\complete -c zai -n "__fish_seen_subcommand_from provider; and not __fish_seen_subcommand_from list add remove set-default" -a "list" -d "List all configured providers"
@@ -179,8 +264,8 @@ fn generateFishCompletions(allocator: std.mem.Allocator) ![]const u8 {
         \\complete -c zai -n "__fish_seen_subcommand_from provider; and not __fish_seen_subcommand_from list add remove set-default" -a "set-default" -d "Set the default provider"
         \\
         \\# provider remove/set-default completions
-        \\complete -c zai -n "__fish_seen_subcommand_from provider; and __fish_seen_subcommand_from remove" -a "(zai completions fish --list-providers)" -d "Provider to remove"
-        \\complete -c zai -n "__fish_seen_subcommand_from provider; and __fish_seen_subcommand_from set-default" -a "(zai completions fish --list-providers)" -d "Provider to set as default"
+        \\complete -c zai -n "__fish_seen_subcommand_from provider; and __fish_seen_subcommand_from remove" -a "(__zai_get_providers)" -d "Provider to remove"
+        \\complete -c zai -n "__fish_seen_subcommand_from provider; and __fish_seen_subcommand_from set-default" -a "(__zai_get_providers)" -d "Provider to set as default"
         \\
         \\# models subcommands
         \\complete -c zai -n "__fish_seen_subcommand_from models; and not __fish_seen_subcommand_from list add set-prompt clear-prompt" -a "list" -d "List all models from all providers"
@@ -189,18 +274,18 @@ fn generateFishCompletions(allocator: std.mem.Allocator) ![]const u8 {
         \\complete -c zai -n "__fish_seen_subcommand_from models; and not __fish_seen_subcommand_from list add set-prompt clear-prompt" -a "clear-prompt" -d "Clear default prompt for a model"
         \\
         \\# models add provider completion
-        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from add; and __fish_is_nth_token 3" -a "(zai completions fish --list-providers)" -d "Provider to add model to"
+        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from add; and __fish_is_token_n 3" -a "(__zai_get_providers)" -d "Provider to add model to"
         \\
         \\# models set-prompt/clear-prompt provider completion
-        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from set-prompt; and __fish_is_nth_token 3" -a "(zai completions fish --list-providers)" -d "Provider for model"
-        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from clear-prompt; and __fish_is_nth_token 3" -a "(zai completions fish --list-providers)" -d "Provider for model"
+        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from set-prompt; and __fish_is_token_n 3" -a "(__zai_get_providers)" -d "Provider for model"
+        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from clear-prompt; and __fish_is_token_n 3" -a "(__zai_get_providers)" -d "Provider for model"
         \\
         \\# models set-prompt/clear-prompt model completion
-        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from set-prompt; and __fish_is_nth_token 4" -a '(set -l cmd (commandline -poc); zai completions fish --list-models "$cmd[3]")' -d "Model name"
-        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from clear-prompt; and __fish_is_nth_token 4" -a '(set -l cmd (commandline -poc); zai completions fish --list-models "$cmd[3]")' -d "Model name"
+        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from set-prompt; and __fish_is_token_n 4" -a '(set -l cmd (commandline -op); __zai_get_models $cmd[3])' -d "Model name"
+        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from clear-prompt; and __fish_is_token_n 4" -a '(set -l cmd (commandline -op); __zai_get_models $cmd[3])' -d "Model name"
         \\
         \\# models set-prompt prompt completion
-        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from set-prompt; and __fish_is_nth_token 5" -a "(zai completions fish --list-prompts)" -d "Prompt name"
+        \\complete -c zai -n "__fish_seen_subcommand_from models; and __fish_seen_subcommand_from set-prompt; and __fish_is_token_n 5" -a "(__zai_get_prompts)" -d "Prompt name"
         \\
         \\# prompt subcommands
         \\complete -c zai -n "__fish_seen_subcommand_from prompt; and not __fish_seen_subcommand_from list get add update remove import" -a "list" -d "List all prompts"
@@ -211,10 +296,10 @@ fn generateFishCompletions(allocator: std.mem.Allocator) ![]const u8 {
         \\complete -c zai -n "__fish_seen_subcommand_from prompt; and not __fish_seen_subcommand_from list get add update remove import" -a "import" -d "Import prompt content from a file"
         \\
         \\# prompt get/update/remove/import prompt completion
-        \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from get" -a "(zai completions fish --list-prompts)" -d "Prompt name"
-        \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from update" -a "(zai completions fish --list-prompts)" -d "Prompt name"
-        \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from remove" -a "(zai completions fish --list-prompts)" -d "Prompt name"
-        \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from import" -a "(zai completions fish --list-prompts)" -d "Prompt name"
+        \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from get" -a "(__zai_get_prompts)" -d "Prompt name"
+        \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from update" -a "(__zai_get_prompts)" -d "Prompt name"
+        \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from remove" -a "(__zai_get_prompts)" -d "Prompt name"
+        \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from import" -a "(__zai_get_prompts)" -d "Prompt name"
         \\
         \\# prompt add/update/import options
         \\complete -c zai -n "__fish_seen_subcommand_from prompt; and __fish_contains_opt -s type" -a "system user" -d "Prompt type"
