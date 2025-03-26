@@ -18,6 +18,8 @@ pub const ZaiError = core.ZaiError;
 pub const Registry = registry.Registry;
 pub const ModelSpec = registry.ModelSpec;
 pub const ProviderSpec = registry.ProviderSpec;
+pub const Prompt = registry.Prompt;
+pub const PromptType = registry.PromptType;
 
 pub const ChatRequestOptions = requests.ChatRequestOptions;
 pub const CompletionRequestOptions = requests.CompletionRequestOptions;

@@ -8,8 +8,10 @@ const ProviderConfig = config.ProviderConfig;
 pub const RegistryError = error{
     ProviderNotFound,
     ModelNotFound,
+    PromptNotFound,
     ProviderAlreadyExists,
     ModelAlreadyExists,
+    PromptAlreadyExists,
     ProviderNotInitialized,
     InvalidConfiguration,
     OutOfMemory,
@@ -20,8 +22,10 @@ pub const SerializationError = error{
     MissingRequiredField,
     InvalidProviderType,
     InvalidCapability,
+    InvalidPromptType,
     FileError,
     ProviderAlreadyExists,
+    PromptAlreadyExists,
 } || std.json.ParseFromValueError || Allocator.Error;
 
 pub const Capability = enum {
@@ -34,10 +38,37 @@ pub const Capability = enum {
     }
 };
 
+pub const PromptType = enum {
+    system,
+    user,
+    
+    pub fn jsonStringify(self: @This(), serializer: anytype) !void {
+        try serializer.write(@tagName(self));
+    }
+};
+
+pub const Prompt = struct {
+    name: []const u8,
+    type: PromptType,
+    content: []const u8,
+    
+    pub fn jsonStringify(self: @This(), serializer: anytype) !void {
+        try serializer.beginObject();
+        try serializer.objectField("name");
+        try serializer.write(self.name);
+        try serializer.objectField("type");
+        try serializer.write(@tagName(self.type));
+        try serializer.objectField("content");
+        try serializer.write(self.content);
+        try serializer.endObject();
+    }
+};
+
 pub const ModelSpec = struct {
     name: []const u8,
     id: []const u8,
     capabilities: std.EnumSet(Capability),
+    default_prompt_name: ?[]const u8 = null,
 
     pub fn jsonStringify(self: @This(), serializer: anytype) !void {
         try serializer.beginObject();
@@ -56,6 +87,12 @@ pub const ModelSpec = struct {
             }
         }
         try serializer.endArray();
+        
+        if (self.default_prompt_name) |prompt_name| {
+            try serializer.objectField("default_prompt_name");
+            try serializer.write(prompt_name);
+        }
+        
         try serializer.endObject();
     }
 };
@@ -90,15 +127,18 @@ pub const ProviderSpec = struct {
 pub const Registry = struct {
     allocator: Allocator,
     providers: std.ArrayList(ProviderSpec),
+    prompts: std.ArrayList(Prompt),
 
     pub fn init(allocator: Allocator) Registry {
         return .{
             .allocator = allocator,
             .providers = std.ArrayList(ProviderSpec).init(allocator),
+            .prompts = std.ArrayList(Prompt).init(allocator),
         };
     }
 
     pub fn deinit(self: *Registry) void {
+        // Clean up providers
         for (self.providers.items) |*provider| {
             if (provider.instance) |instance| {
                 instance.deinit();
@@ -137,10 +177,20 @@ pub const Registry = struct {
             for (provider.models) |*model| {
                 self.allocator.free(model.name);
                 self.allocator.free(model.id);
+                if (model.default_prompt_name) |prompt_name| {
+                    self.allocator.free(prompt_name);
+                }
             }
             self.allocator.free(provider.models);
         }
         self.providers.deinit();
+        
+        // Clean up prompts
+        for (self.prompts.items) |*prompt| {
+            self.allocator.free(prompt.name);
+            self.allocator.free(prompt.content);
+        }
+        self.prompts.deinit();
     }
 
     fn parseModelSpec(allocator: Allocator, json: std.json.Value) !ModelSpec {
@@ -156,15 +206,20 @@ pub const Registry = struct {
         // Allocate id next
         const id_dup = try allocator.dupe(u8, id.string);
         errdefer allocator.free(id_dup);
+        
+        // Check for optional default_prompt_name
+        var default_prompt_name_dup: ?[]const u8 = null;
+        errdefer if (default_prompt_name_dup) |p| allocator.free(p);
+        
+        if (obj.get("default_prompt_name")) |prompt_name| {
+            default_prompt_name_dup = try allocator.dupe(u8, prompt_name.string);
+        }
 
         var cap_set = std.EnumSet(Capability){};
         for (capabilities_array.array.items) |cap_value| {
             if (std.meta.stringToEnum(Capability, cap_value.string)) |cap| {
                 cap_set.insert(cap);
             } else {
-                // Clean up on error
-                allocator.free(name_dup);
-                allocator.free(id_dup);
                 return error.InvalidCapability;
             }
         }
@@ -173,9 +228,35 @@ pub const Registry = struct {
             .name = name_dup,
             .id = id_dup,
             .capabilities = cap_set,
+            .default_prompt_name = default_prompt_name_dup,
         };
     }
 
+    fn parsePrompt(allocator: Allocator, json: std.json.Value) !Prompt {
+        const obj = json.object;
+        const name = obj.get("name") orelse return error.MissingRequiredField;
+        const type_str = obj.get("type") orelse return error.MissingRequiredField;
+        const content = obj.get("content") orelse return error.MissingRequiredField;
+        
+        // Allocate name first
+        const name_dup = try allocator.dupe(u8, name.string);
+        errdefer allocator.free(name_dup);
+        
+        // Check prompt type
+        const prompt_type = std.meta.stringToEnum(PromptType, type_str.string) orelse 
+            return error.InvalidPromptType;
+        
+        // Allocate content
+        const content_dup = try allocator.dupe(u8, content.string);
+        errdefer allocator.free(content_dup);
+        
+        return Prompt{
+            .name = name_dup,
+            .type = prompt_type,
+            .content = content_dup,
+        };
+    }
+    
     fn parseProviderConfig(allocator: Allocator, config_type: []const u8, json_obj: std.json.ObjectMap) SerializationError!ProviderConfig {
         if (std.mem.eql(u8, config_type, "openai")) {
             const api_key = json_obj.get("api_key") orelse return error.MissingRequiredField;
@@ -312,14 +393,20 @@ pub const Registry = struct {
 
         const wrapper = struct {
             providers: []const ProviderSpec,
+            prompts: []const Prompt,
 
             pub fn jsonStringify(data: @This(), serializer: anytype) !void {
                 try serializer.beginObject();
                 try serializer.objectField("providers");
                 try serializer.write(data.providers);
+                try serializer.objectField("prompts");
+                try serializer.write(data.prompts);
                 try serializer.endObject();
             }
-        }{ .providers = self.providers.items };
+        }{ 
+            .providers = self.providers.items,
+            .prompts = self.prompts.items,
+        };
 
         std.json.stringify(wrapper, .{ .whitespace = .indent_2 }, file.writer()) catch |err| switch (err) {
             else => return SerializationError.FileError,
@@ -344,6 +431,15 @@ pub const Registry = struct {
         var registry = Registry.init(allocator);
         errdefer registry.deinit();
 
+        // Load prompts if they exist
+        if (parsed.value.object.get("prompts")) |prompts_array| {
+            for (prompts_array.array.items) |prompt_value| {
+                const prompt = try parsePrompt(allocator, prompt_value);
+                try registry.prompts.append(prompt);
+            }
+        }
+
+        // Load providers
         const providers_array = parsed.value.object.get("providers") orelse
             return error.MissingRequiredField;
 
@@ -390,6 +486,7 @@ pub const Registry = struct {
                 for (models[0..successful_models]) |*model| {
                     allocator.free(model.name);
                     allocator.free(model.id);
+                    if (model.default_prompt_name) |p| allocator.free(p);
                 }
             }
 
@@ -405,6 +502,7 @@ pub const Registry = struct {
             for (models) |*model| {
                 allocator.free(model.name);
                 allocator.free(model.id);
+                if (model.default_prompt_name) |p| allocator.free(p);
             }
             allocator.free(models);
         }
@@ -426,6 +524,82 @@ pub const Registry = struct {
             return provider.findModel(model_name);
         }
         return null;
+    }
+    
+    pub fn getPrompt(self: *Registry, name: []const u8) ?*Prompt {
+        for (self.prompts.items) |*prompt| {
+            if (std.mem.eql(u8, prompt.name, name)) {
+                return prompt;
+            }
+        }
+        return null;
+    }
+    
+    pub fn createPrompt(
+        self: *Registry,
+        name: []const u8,
+        prompt_type: PromptType,
+        content: []const u8,
+    ) !void {
+        // Check for existing prompt first
+        if (self.getPrompt(name) != null) {
+            return error.PromptAlreadyExists;
+        }
+        
+        // Duplicate name
+        const name_dup = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(name_dup);
+        
+        // Duplicate content
+        const content_dup = try self.allocator.dupe(u8, content);
+        errdefer self.allocator.free(content_dup);
+        
+        try self.prompts.append(.{
+            .name = name_dup,
+            .type = prompt_type,
+            .content = content_dup,
+        });
+    }
+    
+    pub fn updatePrompt(
+        self: *Registry,
+        name: []const u8,
+        prompt_type: PromptType,
+        content: []const u8,
+    ) !void {
+        const prompt = self.getPrompt(name) orelse return error.PromptNotFound;
+        
+        // Create duplicate of new content first
+        const content_dup = try self.allocator.dupe(u8, content);
+        errdefer self.allocator.free(content_dup);
+        
+        // Free the old content
+        self.allocator.free(prompt.content);
+        
+        // Update the prompt
+        prompt.type = prompt_type;
+        prompt.content = content_dup;
+    }
+    
+    pub fn deletePrompt(self: *Registry, name: []const u8) !void {
+        var found_index: ?usize = null;
+        
+        for (self.prompts.items, 0..) |prompt, i| {
+            if (std.mem.eql(u8, prompt.name, name)) {
+                found_index = i;
+                break;
+            }
+        }
+        
+        const index = found_index orelse return error.PromptNotFound;
+        
+        // Free the prompt resources
+        const prompt = self.prompts.items[index];
+        self.allocator.free(prompt.name);
+        self.allocator.free(prompt.content);
+        
+        // Remove from the list
+        _ = self.prompts.orderedRemove(index);
     }
 
     pub fn createProvider(
@@ -449,6 +623,7 @@ pub const Registry = struct {
             for (models_dup[0..successful_dups]) |*model| {
                 self.allocator.free(model.name);
                 self.allocator.free(model.id);
+                if (model.default_prompt_name) |p| self.allocator.free(p);
             }
         }
 
@@ -459,11 +634,18 @@ pub const Registry = struct {
 
             const model_id = try self.allocator.dupe(u8, model.id);
             errdefer self.allocator.free(model_id);
+            
+            var default_prompt_name_dup: ?[]const u8 = null;
+            if (model.default_prompt_name) |prompt_name| {
+                default_prompt_name_dup = try self.allocator.dupe(u8, prompt_name);
+                errdefer if (default_prompt_name_dup) |p| self.allocator.free(p);
+            }
 
             models_dup[i] = .{
                 .name = model_name,
                 .id = model_id,
                 .capabilities = model.capabilities,
+                .default_prompt_name = default_prompt_name_dup,
             };
             successful_dups += 1;
         }
@@ -592,5 +774,60 @@ pub const Registry = struct {
             self.allocator.destroy(instance);
             provider.instance = null;
         }
+    }
+    
+    pub fn setModelDefaultPrompt(
+        self: *Registry,
+        provider_name: []const u8,
+        model_name: []const u8,
+        prompt_name: ?[]const u8,
+    ) !void {
+        // Find the provider
+        const provider = self.getProvider(provider_name) orelse return error.ProviderNotFound;
+        
+        // Find the model
+        var model: ?*ModelSpec = null;
+        for (provider.models) |*m| {
+            if (std.mem.eql(u8, m.name, model_name)) {
+                model = m;
+                break;
+            }
+        }
+        
+        if (model == null) return error.ModelNotFound;
+        
+        // If we're setting to null, just clear the current value
+        if (prompt_name == null) {
+            if (model.?.default_prompt_name) |current_name| {
+                self.allocator.free(current_name);
+                model.?.default_prompt_name = null;
+            }
+            return;
+        }
+        
+        // Check that the prompt exists
+        if (self.getPrompt(prompt_name.?) == null) return error.PromptNotFound;
+        
+        // If there's already a prompt name, free it
+        if (model.?.default_prompt_name) |current_name| {
+            self.allocator.free(current_name);
+        }
+        
+        // Set the new prompt name
+        model.?.default_prompt_name = try self.allocator.dupe(u8, prompt_name.?);
+    }
+    
+    pub fn getModelDefaultPrompt(
+        self: *Registry,
+        provider_name: []const u8,
+        model_name: []const u8,
+    ) !?*Prompt {
+        if (self.getModel(provider_name, model_name)) |model| {
+            if (model.default_prompt_name) |prompt_name| {
+                return self.getPrompt(prompt_name) orelse return error.PromptNotFound;
+            }
+            return null;
+        }
+        return error.ModelNotFound;
     }
 };

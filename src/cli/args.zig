@@ -6,6 +6,7 @@ pub const Command = enum {
     embedding,
     provider,
     models,
+    prompt,
 
     pub fn fromString(str: []const u8) !Command {
         if (std.mem.eql(u8, str, "chat")) return .chat;
@@ -13,13 +14,14 @@ pub const Command = enum {
         if (std.mem.eql(u8, str, "embedding")) return .embedding;
         if (std.mem.eql(u8, str, "provider")) return .provider;
         if (std.mem.eql(u8, str, "models")) return .models;
+        if (std.mem.eql(u8, str, "prompt")) return .prompt;
         return error.InvalidCommand;
     }
 
     pub fn requiresPrompt(self: Command) bool {
         return switch (self) {
             .chat, .completion => true,
-            .embedding, .provider, .models => false,
+            .embedding, .provider, .models, .prompt => false,
         };
     }
 };
@@ -48,7 +50,7 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !ChatOp
         .prompt = "",
     };
 
-    if (command == .provider or command == .models) {
+    if (command == .provider or command == .models or command == .prompt) {
         options.prompt = try allocator.dupe(u8, "");
         return options;
     }

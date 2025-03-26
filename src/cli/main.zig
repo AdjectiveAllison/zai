@@ -14,6 +14,7 @@ fn printUsage() !void {
         \\  embedding    Get embeddings for text
         \\  provider     Manage AI providers
         \\  models       Manage provider models
+        \\  prompt       Manage system and user prompts
         \\
         \\Run 'zai <command> --help' for more information on a command.
         \\
@@ -128,6 +129,10 @@ fn printModelsHelp() !void {
         \\Subcommands:
         \\  list                     List all models from all providers
         \\  add <provider> <name>    Add a model to a provider
+        \\  set-prompt <provider> <model_name> <prompt_name>
+        \\                        Set default prompt for a model
+        \\  clear-prompt <provider> <model_name>
+        \\                        Clear default prompt for a model
         \\
         \\Options for add:
         \\  --id <id>               Model ID (required)
@@ -139,6 +144,42 @@ fn printModelsHelp() !void {
         \\  zai models list
         \\  zai models add aws claude-3-opus --id anthropic.claude-3-opus-20240229 --chat
         \\  zai models add openai gpt-4 --id gpt-4 --chat --completion
+        \\  zai models set-prompt anthropic claude-3-7-sonnet my-system-prompt
+        \\  zai models clear-prompt anthropic claude-3-7-sonnet
+        \\
+    );
+}
+
+fn printPromptHelp() !void {
+    const stderr = std.io.getStdErr().writer();
+    try stderr.writeAll(
+        \\Usage: zai prompt <subcommand> [options]
+        \\
+        \\Manage system and user prompts.
+        \\
+        \\Subcommands:
+        \\  list                  List all prompts
+        \\  get <name>            Show content of a specific prompt
+        \\  add <name> --type <type> --content <content>
+        \\                        Add a new prompt
+        \\  update <name> [--type <type>] [--content <content>]
+        \\                        Update an existing prompt
+        \\  remove <name>         Remove a prompt
+        \\  import <name> --type <type> --file <file_path>
+        \\                        Import prompt content from a file
+        \\
+        \\Options:
+        \\  --type <type>         Prompt type: "system" or "user"
+        \\  --content <content>   The prompt content
+        \\  --file <file_path>    Path to a file containing prompt content
+        \\
+        \\Examples:
+        \\  zai prompt list
+        \\  zai prompt get my-system-prompt
+        \\  zai prompt add my-system-prompt --type system --content "You are a helpful assistant"
+        \\  zai prompt update my-system-prompt --content "You are a creative assistant"
+        \\  zai prompt remove my-system-prompt
+        \\  zai prompt import my-system-prompt --type system --file ./prompts/system.txt
         \\
     );
 }
@@ -390,6 +431,337 @@ fn handleProvider(allocator: std.mem.Allocator, cli_args: []const []const u8) !v
     }
 }
 
+fn handlePrompt(allocator: std.mem.Allocator, cli_args: []const []const u8) !void {
+    if (cli_args.len < 3) {
+        try printPromptHelp();
+        return;
+    }
+
+    // Load registry
+    const config_file = try config_path.getConfigPath(allocator);
+    defer allocator.free(config_file);
+
+    var registry = try zai.Registry.loadFromFile(allocator, config_file);
+    defer registry.deinit();
+
+    const subcommand = cli_args[2];
+    const stdout = std.io.getStdOut().writer();
+    const stderr = std.io.getStdErr().writer();
+
+    if (std.mem.eql(u8, subcommand, "list")) {
+        if (registry.prompts.items.len == 0) {
+            try stdout.writeAll("No prompts configured. Use 'zai prompt add' to create prompts.\n");
+            return;
+        }
+
+        try stdout.writeAll("Configured prompts:\n\n");
+        for (registry.prompts.items) |prompt| {
+            try stdout.print("- {s} (type: {s})\n", .{ prompt.name, @tagName(prompt.type) });
+        }
+    } else if (std.mem.eql(u8, subcommand, "get")) {
+        if (cli_args.len < 4) {
+            try stderr.writeAll("Missing prompt name\n");
+            try stderr.writeAll("Usage: zai prompt get <name>\n");
+            return;
+        }
+
+        const prompt_name = cli_args[3];
+        const prompt = registry.getPrompt(prompt_name) orelse {
+            try stderr.print("Prompt '{s}' not found\n", .{prompt_name});
+            return error.PromptNotFound;
+        };
+
+        try stdout.print("Name: {s}\n", .{prompt.name});
+        try stdout.print("Type: {s}\n", .{@tagName(prompt.type)});
+        try stdout.print("\nContent:\n{s}\n", .{prompt.content});
+    } else if (std.mem.eql(u8, subcommand, "add")) {
+        if (cli_args.len < 4) {
+            try stderr.writeAll("Missing prompt name\n");
+            try stderr.writeAll("Usage: zai prompt add <name> --type <type> --content <content>\n");
+            return;
+        }
+
+        const prompt_name = cli_args[3];
+        
+        // Parse options
+        var prompt_type: ?zai.PromptType = null;
+        var content: ?[]const u8 = null;
+        var file_path: ?[]const u8 = null;
+        
+        var i: usize = 4;
+        while (i < cli_args.len) : (i += 1) {
+            const arg = cli_args[i];
+            if (std.mem.eql(u8, arg, "--type")) {
+                if (i + 1 >= cli_args.len) {
+                    try stderr.writeAll("Missing value for --type\n");
+                    return error.MissingOptionValue;
+                }
+                i += 1;
+                const type_str = cli_args[i];
+                if (std.mem.eql(u8, type_str, "system")) {
+                    prompt_type = .system;
+                } else if (std.mem.eql(u8, type_str, "user")) {
+                    prompt_type = .user;
+                } else {
+                    try stderr.writeAll("Invalid prompt type. Must be 'system' or 'user'\n");
+                    return error.InvalidOption;
+                }
+            } else if (std.mem.eql(u8, arg, "--content")) {
+                if (i + 1 >= cli_args.len) {
+                    try stderr.writeAll("Missing value for --content\n");
+                    return error.MissingOptionValue;
+                }
+                i += 1;
+                content = cli_args[i];
+            } else if (std.mem.eql(u8, arg, "--file")) {
+                if (i + 1 >= cli_args.len) {
+                    try stderr.writeAll("Missing value for --file\n");
+                    return error.MissingOptionValue;
+                }
+                i += 1;
+                file_path = cli_args[i];
+            } else {
+                try stderr.print("Invalid option: {s}\n", .{arg});
+                return error.InvalidOption;
+            }
+        }
+        
+        // Validate options
+        if (prompt_type == null) {
+            try stderr.writeAll("Missing required --type option\n");
+            return error.MissingRequiredField;
+        }
+        
+        // Handle file import
+        if (file_path) |path| {
+            if (content != null) {
+                try stderr.writeAll("Cannot specify both --content and --file\n");
+                return error.InvalidOption;
+            }
+            
+            // Read file content
+            content = std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024) catch |err| {
+                try stderr.print("Failed to read file '{s}': {s}\n", .{ path, @errorName(err) });
+                return err;
+            };
+            defer allocator.free(content.?);
+        } else if (content == null) {
+            try stderr.writeAll("Missing required --content option (or --file)\n");
+            return error.MissingRequiredField;
+        }
+        
+        // Add the prompt
+        registry.createPrompt(prompt_name, prompt_type.?, content.?) catch |err| {
+            switch (err) {
+                error.PromptAlreadyExists => {
+                    try stderr.print("Prompt '{s}' already exists\n", .{prompt_name});
+                    return err;
+                },
+                else => return err,
+            }
+        };
+        
+        // Save registry
+        try registry.saveToFile(config_file);
+        try stdout.print("Added prompt '{s}'\n", .{prompt_name});
+        
+    } else if (std.mem.eql(u8, subcommand, "update")) {
+        if (cli_args.len < 4) {
+            try stderr.writeAll("Missing prompt name\n");
+            try stderr.writeAll("Usage: zai prompt update <name> [--type <type>] [--content <content>]\n");
+            return;
+        }
+
+        const prompt_name = cli_args[3];
+        const existing_prompt = registry.getPrompt(prompt_name) orelse {
+            try stderr.print("Prompt '{s}' not found\n", .{prompt_name});
+            return error.PromptNotFound;
+        };
+        
+        // Parse options
+        var prompt_type: ?zai.PromptType = existing_prompt.type;
+        var content: ?[]const u8 = null;
+        var file_path: ?[]const u8 = null;
+        var update_needed = false;
+        
+        var i: usize = 4;
+        while (i < cli_args.len) : (i += 1) {
+            const arg = cli_args[i];
+            if (std.mem.eql(u8, arg, "--type")) {
+                if (i + 1 >= cli_args.len) {
+                    try stderr.writeAll("Missing value for --type\n");
+                    return error.MissingOptionValue;
+                }
+                i += 1;
+                update_needed = true;
+                const type_str = cli_args[i];
+                if (std.mem.eql(u8, type_str, "system")) {
+                    prompt_type = .system;
+                } else if (std.mem.eql(u8, type_str, "user")) {
+                    prompt_type = .user;
+                } else {
+                    try stderr.writeAll("Invalid prompt type. Must be 'system' or 'user'\n");
+                    return error.InvalidOption;
+                }
+            } else if (std.mem.eql(u8, arg, "--content")) {
+                if (i + 1 >= cli_args.len) {
+                    try stderr.writeAll("Missing value for --content\n");
+                    return error.MissingOptionValue;
+                }
+                i += 1;
+                update_needed = true;
+                content = cli_args[i];
+            } else if (std.mem.eql(u8, arg, "--file")) {
+                if (i + 1 >= cli_args.len) {
+                    try stderr.writeAll("Missing value for --file\n");
+                    return error.MissingOptionValue;
+                }
+                i += 1;
+                update_needed = true;
+                file_path = cli_args[i];
+            } else {
+                try stderr.print("Invalid option: {s}\n", .{arg});
+                return error.InvalidOption;
+            }
+        }
+        
+        // Handle file import
+        if (file_path) |path| {
+            if (content != null) {
+                try stderr.writeAll("Cannot specify both --content and --file\n");
+                return error.InvalidOption;
+            }
+            
+            // Read file content
+            content = std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024) catch |err| {
+                try stderr.print("Failed to read file '{s}': {s}\n", .{ path, @errorName(err) });
+                return err;
+            };
+            defer allocator.free(content.?);
+        }
+        
+        // Check if any updates requested
+        if (!update_needed) {
+            try stderr.writeAll("No updates specified. Use --type, --content, or --file\n");
+            return;
+        }
+        
+        // Update the prompt
+        try registry.updatePrompt(
+            prompt_name, 
+            prompt_type.?, 
+            content orelse existing_prompt.content
+        );
+        
+        // Save registry
+        try registry.saveToFile(config_file);
+        try stdout.print("Updated prompt '{s}'\n", .{prompt_name});
+        
+    } else if (std.mem.eql(u8, subcommand, "remove")) {
+        if (cli_args.len < 4) {
+            try stderr.writeAll("Missing prompt name\n");
+            try stderr.writeAll("Usage: zai prompt remove <name>\n");
+            return;
+        }
+
+        const prompt_name = cli_args[3];
+        
+        // Delete the prompt
+        registry.deletePrompt(prompt_name) catch |err| {
+            switch (err) {
+                error.PromptNotFound => {
+                    try stderr.print("Prompt '{s}' not found\n", .{prompt_name});
+                    return err;
+                },
+                else => return err,
+            }
+        };
+        
+        // Save registry
+        try registry.saveToFile(config_file);
+        try stdout.print("Removed prompt '{s}'\n", .{prompt_name});
+        
+    } else if (std.mem.eql(u8, subcommand, "import")) {
+        if (cli_args.len < 4) {
+            try stderr.writeAll("Missing prompt name\n");
+            try stderr.writeAll("Usage: zai prompt import <name> --type <type> --file <file_path>\n");
+            return;
+        }
+
+        const prompt_name = cli_args[3];
+        
+        // Parse options
+        var prompt_type: ?zai.PromptType = null;
+        var file_path: ?[]const u8 = null;
+        
+        var i: usize = 4;
+        while (i < cli_args.len) : (i += 1) {
+            const arg = cli_args[i];
+            if (std.mem.eql(u8, arg, "--type")) {
+                if (i + 1 >= cli_args.len) {
+                    try stderr.writeAll("Missing value for --type\n");
+                    return error.MissingOptionValue;
+                }
+                i += 1;
+                const type_str = cli_args[i];
+                if (std.mem.eql(u8, type_str, "system")) {
+                    prompt_type = .system;
+                } else if (std.mem.eql(u8, type_str, "user")) {
+                    prompt_type = .user;
+                } else {
+                    try stderr.writeAll("Invalid prompt type. Must be 'system' or 'user'\n");
+                    return error.InvalidOption;
+                }
+            } else if (std.mem.eql(u8, arg, "--file")) {
+                if (i + 1 >= cli_args.len) {
+                    try stderr.writeAll("Missing value for --file\n");
+                    return error.MissingOptionValue;
+                }
+                i += 1;
+                file_path = cli_args[i];
+            } else {
+                try stderr.print("Invalid option: {s}\n", .{arg});
+                return error.InvalidOption;
+            }
+        }
+        
+        // Validate options
+        if (prompt_type == null) {
+            try stderr.writeAll("Missing required --type option\n");
+            return error.MissingRequiredField;
+        }
+        
+        if (file_path == null) {
+            try stderr.writeAll("Missing required --file option\n");
+            return error.MissingRequiredField;
+        }
+        
+        // Read file content
+        const content = std.fs.cwd().readFileAlloc(allocator, file_path.?, 1024 * 1024) catch |err| {
+            try stderr.print("Failed to read file '{s}': {s}\n", .{ file_path.?, @errorName(err) });
+            return err;
+        };
+        defer allocator.free(content);
+        
+        // Check if prompt already exists
+        if (registry.getPrompt(prompt_name)) |_| {
+            // Update existing prompt
+            try registry.updatePrompt(prompt_name, prompt_type.?, content);
+            try stdout.print("Updated prompt '{s}' from file\n", .{prompt_name});
+        } else {
+            // Add new prompt
+            try registry.createPrompt(prompt_name, prompt_type.?, content);
+            try stdout.print("Imported prompt '{s}' from file\n", .{prompt_name});
+        }
+        
+        // Save registry
+        try registry.saveToFile(config_file);
+        
+    } else {
+        try printPromptHelp();
+    }
+}
+
 fn handleModels(allocator: std.mem.Allocator, cli_args: []const []const u8) !void {
     if (cli_args.len < 3) {
         try printModelsHelp();
@@ -525,6 +897,63 @@ fn handleModels(allocator: std.mem.Allocator, cli_args: []const []const u8) !voi
 
         const stdout = std.io.getStdOut().writer();
         try stdout.print("Added model '{s}' to provider '{s}'\n", .{ model_name, provider_name });
+    } else if (std.mem.eql(u8, subcommand, "set-prompt")) {
+        if (cli_args.len < 6) {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll("Missing provider name, model name, or prompt name\n");
+            try stderr.writeAll("Usage: zai models set-prompt <provider> <model_name> <prompt_name>\n");
+            return;
+        }
+
+        const provider_name = cli_args[3];
+        const model_name = cli_args[4];
+        const prompt_name = cli_args[5];
+        
+        // Load registry
+        const config_file = try config_path.getConfigPath(allocator);
+        defer allocator.free(config_file);
+
+        var registry = try zai.Registry.loadFromFile(allocator, config_file);
+        defer registry.deinit();
+        
+        // Set the prompt
+        try registry.setModelDefaultPrompt(provider_name, model_name, prompt_name);
+        
+        // Save registry
+        try registry.saveToFile(config_file);
+        
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("Set default prompt '{s}' for model '{s}' in provider '{s}'\n", 
+            .{ prompt_name, model_name, provider_name });
+            
+    } else if (std.mem.eql(u8, subcommand, "clear-prompt")) {
+        if (cli_args.len < 5) {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll("Missing provider name or model name\n");
+            try stderr.writeAll("Usage: zai models clear-prompt <provider> <model_name>\n");
+            return;
+        }
+
+        const provider_name = cli_args[3];
+        const model_name = cli_args[4];
+        
+        // Load registry
+        const config_file = try config_path.getConfigPath(allocator);
+        defer allocator.free(config_file);
+
+        var registry = try zai.Registry.loadFromFile(allocator, config_file);
+        defer registry.deinit();
+        
+        // Clear the prompt
+        try registry.setModelDefaultPrompt(provider_name, model_name, null);
+        
+        // Save registry
+        try registry.saveToFile(config_file);
+        
+        const stdout = std.io.getStdOut().writer();
+        try stdout.print("Cleared default prompt for model '{s}' in provider '{s}'\n", 
+            .{ model_name, provider_name });
+            
     } else {
         try printModelsHelp();
     }
@@ -560,6 +989,7 @@ pub fn main() !void {
             .embedding => try printEmbeddingHelp(),
             .provider => try printProviderHelp(),
             .models => try printModelsHelp(),
+            .prompt => try printPromptHelp(),
         }
         return;
     }
@@ -593,6 +1023,7 @@ pub fn main() !void {
                     .embedding => try printEmbeddingHelp(),
                     .provider => try printProviderHelp(),
                     .models => try printModelsHelp(),
+                    .prompt => try printPromptHelp(),
                 }
             },
             error.MissingOptionValue => {
@@ -646,5 +1077,6 @@ pub fn main() !void {
         },
         .provider => try handleProvider(allocator, cli_args),
         .models => try handleModels(allocator, cli_args),
+        .prompt => try handlePrompt(allocator, cli_args),
     }
 }
