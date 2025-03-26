@@ -188,35 +188,76 @@ fn handleChat(allocator: std.mem.Allocator, provider: *zai.Provider, provider_na
     const stdout = std.io.getStdOut().writer();
     const stderr = std.io.getStdErr().writer();
 
-    // Get model - either from options or try to find a default model with chat capability
-    const model_id = if (options.model) |m| m else blk: {
+    // Get model info - either from options or try to find a default model with chat capability
+    var model_id: []const u8 = undefined;
+    var model_name: []const u8 = undefined;
+    
+    if (options.model) |m| {
+        model_id = m;
+        model_name = m;
+        
+        // Try to find the actual model name if we can (for better default prompt lookup)
+        const provider_spec = registry.getProvider(provider_name) orelse {
+            try stderr.writeAll("Provider specification not found.\n");
+            return error.ProviderSpecNotFound;
+        };
+        
+        for (provider_spec.models) |model| {
+            if (std.mem.eql(u8, model.id, m) or std.mem.eql(u8, model.name, m)) {
+                model_id = model.id;
+                model_name = model.name;
+                break;
+            }
+        }
+    } else {
         const provider_spec = registry.getProvider(provider_name) orelse {
             try stderr.writeAll("Provider specification not found.\n");
             return error.ProviderSpecNotFound;
         };
 
         // Find first model with chat capability
+        var found = false;
         for (provider_spec.models) |model| {
             if (model.capabilities.contains(.chat)) {
-                break :blk model.id;
+                model_id = model.id;
+                model_name = model.name;
+                found = true;
+                break;
             }
         }
-
-        try stderr.writeAll("No chat-capable models found for this provider.\n");
-        try stderr.print("Please specify a model with --model or add a model with chat capability:\n  zai models add {s} <model_name> --id <model_id> --chat\n", .{provider_name});
-        return error.NoChatModelsAvailable;
-    };
+        
+        if (!found) {
+            try stderr.writeAll("No chat-capable models found for this provider.\n");
+            try stderr.print("Please specify a model with --model or add a model with chat capability:\n  zai models add {s} <model_name> --id <model_id> --chat\n", .{provider_name});
+            return error.NoChatModelsAvailable;
+        }
+    }
 
     // Construct messages array
     var messages = std.ArrayList(zai.Message).init(allocator);
     defer messages.deinit();
 
-    // Add system message if provided
+    // Add system message - either from command options or from model's default prompt
     if (options.system_message) |system_msg| {
         try messages.append(.{
             .role = "system",
             .content = system_msg,
         });
+    } else {
+        // Check if the model has a default prompt
+        if (registry.getModel(provider_name, model_name)) |model| {
+            if (model.default_prompt_name) |prompt_name| {
+                if (registry.getPrompt(prompt_name)) |prompt| {
+                    if (prompt.type == .system) {
+                        try messages.append(.{
+                            .role = "system",
+                            .content = prompt.content,
+                        });
+                        try stdout.print("Using default system prompt: '{s}'\n", .{prompt_name});
+                    }
+                }
+            }
+        }
     }
 
     // Add user message
