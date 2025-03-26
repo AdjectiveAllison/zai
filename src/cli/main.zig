@@ -2,6 +2,7 @@ const std = @import("std");
 const zai = @import("zai");
 const args = @import("args.zig");
 const config_path = @import("config_path.zig");
+const completions = @import("completions.zig");
 
 fn printUsage() !void {
     const stderr = std.io.getStdErr().writer();
@@ -15,6 +16,7 @@ fn printUsage() !void {
         \\  provider     Manage AI providers
         \\  models       Manage provider models
         \\  prompt       Manage system and user prompts
+        \\  completions  Generate shell completion scripts
         \\
         \\Run 'zai <command> --help' for more information on a command.
         \\
@@ -1031,6 +1033,7 @@ pub fn main() !void {
             .provider => try printProviderHelp(),
             .models => try printModelsHelp(),
             .prompt => try printPromptHelp(),
+            .completions => try completions.printCompletionsHelp(),
         }
         return;
     }
@@ -1065,6 +1068,7 @@ pub fn main() !void {
                     .provider => try printProviderHelp(),
                     .models => try printModelsHelp(),
                     .prompt => try printPromptHelp(),
+                    .completions => try completions.printCompletionsHelp(),
                 }
             },
             error.MissingOptionValue => {
@@ -1119,5 +1123,6 @@ pub fn main() !void {
         .provider => try handleProvider(allocator, cli_args),
         .models => try handleModels(allocator, cli_args),
         .prompt => try handlePrompt(allocator, cli_args),
+        .completions => try completions.handleCompletions(allocator, cli_args),
     }
 }
