@@ -17,7 +17,9 @@ zai is a flexible Zig library for interacting with various AI providers' APIs, o
 - Unified interface across providers
 - Streaming support for real-time responses
 - Provider and model registry for easy configuration
-- Command-line interface (CLI) for quick interactions
+- Command-line interface (CLI) for quick interactions:
+  - Stdin piping support for integrating with other Unix tools
+  - Combined prompt and context handling
 - Supports chat completions, standard completions, and embeddings
 
 ## Installation
@@ -146,6 +148,10 @@ zai models add openai gpt-4 --id gpt-4-turbo-preview --chat
 zai chat --provider openai --model gpt-4 "Tell me a joke"
 # same as this if openai and gpt-4 are your first provider and chat model in config.
 zai chat "tell me a joke"
+
+# Pipe content from other commands or files
+cat document.txt | zai chat "Summarize this:"
+git diff | zai chat "Explain these changes:"
 ```
 
 See more CLI examples and documentation by running:
