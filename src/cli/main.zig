@@ -33,11 +33,17 @@ fn printChatHelp() !void {
         \\  --model <name>           Select specific model
         \\  --stream <bool>          Enable/disable streaming (default: true)
         \\
+        \\Stdin Support:
+        \\  You can pipe content into zai through stdin. If a prompt is also provided,
+        \\  the stdin content will be appended to your prompt as context.
+        \\
         \\Examples:
         \\  zai chat "What is the meaning of life?"
         \\  zai chat --provider openai "Tell me a joke"
         \\  zai chat --system-message "You are a helpful assistant" "Help me"
         \\  zai chat --model gpt-4 --stream false "What's the weather?"
+        \\  cat error_log.txt | zai chat "What's wrong with this error message?"
+        \\  git diff | zai chat "Explain these changes"
         \\
     );
 }
@@ -54,10 +60,15 @@ fn printCompletionHelp() !void {
         \\  --model <name>           Select specific model
         \\  --stream <bool>          Enable/disable streaming (default: true)
         \\
+        \\Stdin Support:
+        \\  You can pipe content into zai through stdin. If a prompt is also provided,
+        \\  the stdin content will be appended to your prompt as context.
+        \\
         \\Examples:
         \\  zai completion "The quick brown fox"
         \\  zai completion --provider openai "Once upon a time"
         \\  zai completion --model gpt-4 --stream false "Write a story about"
+        \\  cat template.txt | zai completion "Complete this document"
         \\
     );
 }
@@ -73,9 +84,14 @@ fn printEmbeddingHelp() !void {
         \\  --provider <name>         Select AI provider (default: first configured provider)
         \\  --model <name>           Select specific model
         \\
+        \\Stdin Support:
+        \\  You can pipe content into zai through stdin. If text is also provided,
+        \\  the stdin content will be appended to your text as context.
+        \\
         \\Examples:
         \\  zai embedding "The quick brown fox"
         \\  zai embedding --provider openai "Generate an embedding for this text"
+        \\  cat document.txt | zai embedding "Embed this document"
         \\
     );
 }
