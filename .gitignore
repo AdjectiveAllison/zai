@@ -5,3 +5,5 @@ zig-out/
 .aider*
 
 test_registry.json
+
+**/CLAUDE.local.md
