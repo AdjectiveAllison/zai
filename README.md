@@ -17,6 +17,7 @@ zai is a flexible Zig library for interacting with various AI providers' APIs, o
 - Unified interface across providers
 - Streaming support for real-time responses
 - Provider and model registry for easy configuration
+- System prompt management and reuse across models
 - Command-line interface (CLI) for quick interactions:
   - Stdin piping support for integrating with other Unix tools
   - Combined prompt and context handling
@@ -144,10 +145,22 @@ zai provider add openai --api-key "your-key" --base-url "https://api.openai.com/
 # Add a model to a provider
 zai models add openai gpt-4 --id gpt-4-turbo-preview --chat
 
+# Manage system prompts
+zai prompt add my-system-prompt --type system --content "You are a helpful assistant."
+zai prompt list
+zai prompt import another-prompt --type system --file ./prompts/my-prompt.txt
+
+# Assign a default prompt to a model
+zai models set-prompt openai gpt-4 my-system-prompt
+
 # Chat with a model (will use first provider and first model of provider by default)
 zai chat --provider openai --model gpt-4 "Tell me a joke"
 # same as this if openai and gpt-4 are your first provider and chat model in config.
 zai chat "tell me a joke"
+# The model will automatically use its default system prompt if available
+
+# Override the default system prompt for a single session
+zai chat --system-message "You are a pirate." "Tell me about sailing."
 
 # Pipe content from other commands or files
 cat document.txt | zai chat "Summarize this:"

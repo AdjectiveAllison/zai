@@ -366,6 +366,73 @@ pub fn main() !void {
 }
 ```
 
+## Prompt Management
+
+zai includes a robust system for managing and reusing prompts across different models.
+
+### Creating and Managing Prompts
+
+```zig
+const std = @import("std");
+const zai = @import("zai");
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Load registry
+    var registry = try zai.Registry.loadFromFile(allocator, "config.json");
+    defer registry.deinit();
+
+    // Create a system prompt
+    try registry.createPrompt(
+        "helpful-assistant", 
+        .system,
+        "You are a helpful, accurate, and concise assistant. Provide clear explanations using examples when appropriate."
+    );
+
+    // Add a user prompt template
+    try registry.createPrompt(
+        "code-review", 
+        .user,
+        "Please review the following code and suggest improvements:\n\n```\n{CODE}\n```"
+    );
+
+    // Assign a default prompt to a model
+    try registry.setModelDefaultPrompt("openai", "gpt-4", "helpful-assistant");
+
+    // Save the updated registry
+    try registry.saveToFile("config.json");
+}
+```
+
+### Using Default Prompts in Chat
+
+Once you've set a default prompt for a model, it will be used automatically in chat requests when no explicit system message is provided:
+
+```zig
+// This will use the model's default system prompt
+const messages = [_]zai.Message{
+    .{
+        .role = "user",
+        .content = "What is the capital of France?",
+    },
+};
+
+// Or you can override it for a specific request
+const messages_with_override = [_]zai.Message{
+    .{
+        .role = "system", 
+        .content = "You are a travel guide who loves to share interesting facts.",
+    },
+    .{
+        .role = "user",
+        .content = "What is the capital of France?",
+    },
+};
+```
+
 ## CLI Usage
 
 The zai library includes a command-line interface for interacting with AI providers. Here are some common usage patterns:
@@ -403,6 +470,34 @@ zai models add aws claude-3-sonnet --id anthropic.claude-3-5-sonnet-20241022-v2:
 
 # Add a GPT model to OpenAI provider with multiple capabilities
 zai models add openai gpt-4 --id gpt-4-turbo-preview --chat --completion
+
+# Set default prompt for a model
+zai models set-prompt anthropic claude-3-sonnet system-prompt-name
+
+# Clear default prompt for a model
+zai models clear-prompt anthropic claude-3-sonnet
+```
+
+### Managing Prompts
+
+```sh
+# List all prompts
+zai prompt list
+
+# View a specific prompt
+zai prompt get my-system-prompt
+
+# Add a new system prompt
+zai prompt add my-system-prompt --type system --content "You are a helpful assistant that provides accurate information."
+
+# Update an existing prompt
+zai prompt update my-system-prompt --content "You are an expert assistant that specializes in providing detailed technical explanations."
+
+# Import a prompt from a file
+zai prompt import expert-prompt --type system --file ./prompts/expert.txt
+
+# Remove a prompt
+zai prompt remove outdated-prompt
 ```
 
 ### Chat and Completion
@@ -414,8 +509,12 @@ zai chat "Tell me a joke about programming"
 # Chat with specific provider and model
 zai chat --provider openai --model gpt-4 "Explain quantum computing"
 
-# Chat with a system message
+# Chat with a system message (overrides any default prompt)
 zai chat --system-message "You are a helpful coding assistant" "How do I implement binary search in Zig?"
+
+# Chat with a model that has a default system prompt
+zai chat --model claude-3-sonnet "How do I implement binary search in Zig?"
+# The model will automatically use its default system prompt if one has been set with 'models set-prompt'
 
 # Get completion (not streaming)
 zai completion --stream false "The best thing about Zig is"
