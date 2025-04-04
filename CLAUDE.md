@@ -19,7 +19,7 @@
 - Feature support varies by provider (see README feature matrix)
 
 ## Requirements
-- Zig 0.13.0 required
+- Zig 0.14.0 required
 
 ## Reference Files
 - **USAGE.md**: Contains detailed usage instructions and documentation for the zai library

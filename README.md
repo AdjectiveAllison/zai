@@ -5,7 +5,7 @@ zai is a flexible Zig library for interacting with various AI providers' APIs, o
 
 ## Requirements
 
-- Zig 0.13.0
+- Zig 0.14.0
 
 ## Features
 
